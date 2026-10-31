@@ -1,0 +1,7 @@
+node_modules
+dist
+.DS_Store
+*.log
+# OpenTaiko skin assets are downloaded by `npm run fetch-assets` and must not be
+# redistributed (OpenTaiko Extended License). Keep them out of git.
+public/skins/opentaiko/
