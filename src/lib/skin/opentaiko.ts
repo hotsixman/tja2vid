@@ -1,5 +1,14 @@
 import type { SkinLayout, SkinManifest } from './types';
 
+/**
+ * The official OpenTaiko repository, pinned to a commit so the layout below
+ * keeps matching the images. Used when the assets were not fetched locally
+ * (e.g. the GitHub Pages deployment): images are loaded straight from the
+ * official repo instead of being redistributed with this app.
+ */
+export const OPENTAIKO_REMOTE_BASE =
+  'https://raw.githubusercontent.com/0auBSQ/OpenTaiko/00d7389aa8b7a99333cdde53a0ac85aa3d487586/OpenTaiko/System/Open-World%20Memories/';
+
 const G = 'Graphics/5_Game';
 const BG = `${G}/5_Background/Normal`;
 

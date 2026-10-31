@@ -8,6 +8,7 @@
   import { TaikoRenderer } from './lib/render/renderer';
   import { folderResolver, loadSkin, missingImages, urlResolver } from './lib/skin/loader';
   import type { LoadedSkin } from './lib/skin/types';
+  import { OPENTAIKO_REMOTE_BASE } from './lib/skin/opentaiko';
   import { decodeAudio, mixSoundtrack } from './lib/audio/mix';
   import { computeTimeline } from './lib/timeline';
   import { exportVideo, isExportSupported, type FrameRate, type QualityName } from './lib/video/export';
@@ -66,8 +67,18 @@
     }
   }
 
+  /**
+   * Default skin: locally fetched assets (`npm run fetch-assets`) if present,
+   * otherwise loaded directly from the official OpenTaiko repository.
+   */
+  async function loadDefaultSkin(): Promise<LoadedSkin> {
+    const local = await loadSkin(urlResolver(`${import.meta.env.BASE_URL}skins/opentaiko/`));
+    if (missingImages(local).length < Object.keys(local.manifest.images).length) return local;
+    return loadSkin(urlResolver(OPENTAIKO_REMOTE_BASE));
+  }
+
   onMount(() => {
-    void useSkin(loadSkin(urlResolver(`${import.meta.env.BASE_URL}skins/opentaiko/`)), 'OpenTaiko 기본 스킨');
+    void useSkin(loadDefaultSkin(), 'OpenTaiko 기본 스킨');
   });
 
   function onSkinFolder(e: Event) {
@@ -76,7 +87,7 @@
   }
 
   function resetSkin() {
-    void useSkin(loadSkin(urlResolver(`${import.meta.env.BASE_URL}skins/opentaiko/`)), 'OpenTaiko 기본 스킨');
+    void useSkin(loadDefaultSkin(), 'OpenTaiko 기본 스킨');
   }
 
   // ---------------------------------------------------------------- derived chart
@@ -401,7 +412,8 @@
       <p class="hint">{skinStatus}</p>
       {#if skin && skinMissing.length === Object.keys(skin.manifest.images).length}
         <p class="error">
-          기본 스킨 에셋이 없습니다. 저장소 루트에서 <code>npm run fetch-assets</code>를 실행해 OpenTaiko 에셋을 내려받으세요.
+          기본 스킨 에셋을 불러오지 못했습니다. 네트워크를 확인하거나, 저장소 루트에서 <code>npm run fetch-assets</code>를 실행해
+          OpenTaiko 에셋을 내려받으세요.
         </p>
       {/if}
       <div class="row">

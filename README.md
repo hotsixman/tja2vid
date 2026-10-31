@@ -27,8 +27,15 @@ npm run dev
 브라우저에서 http://localhost:5173 을 열고 `.tja` 파일과 음원 파일을 함께 선택하거나 창에 끌어다 놓으면 됩니다.
 여러 음원을 같이 넣으면 TJA의 `WAVE:` 값과 이름이 같은 파일을 고릅니다.
 
-정적 배포용 빌드는 `npm run build` → `dist/` 입니다 (`base: './'` 이므로 어느 경로에 올려도 됩니다).
-배포 전에 `npm run fetch-assets`를 실행해 두어야 `dist/skins/opentaiko/`에 스킨이 포함됩니다.
+`npm run fetch-assets`를 건너뛰면, 앱이 기본 스킨을 OpenTaiko 공식 저장소(고정된 커밋)에서 직접 불러옵니다.
+
+### 배포 (GitHub Pages)
+
+`.github/workflows/deploy-pages.yml`이 `main`(과 작업 브랜치)에 푸시될 때 테스트 → 빌드 → GitHub Pages 배포를 수행합니다.
+처음 한 번은 저장소 **Settings → Pages → Build and deployment → Source** 를 **GitHub Actions**로 바꿔야 합니다.
+
+배포본에는 OpenTaiko 에셋이 **들어가지 않습니다.** 재배포 금지 조건을 지키기 위해, 배포된 앱은 실행 시점에 OpenTaiko 공식 저장소(raw.githubusercontent.com)에서 스킨을 직접 불러옵니다.
+`npm run build`의 결과물(`dist/`)은 `base: './'` 이므로 어느 경로에 올려도 동작합니다.
 
 ### 브라우저 요구 사항
 
@@ -37,7 +44,7 @@ WebCodecs(`VideoEncoder`)와 `OffscreenCanvas`가 필요합니다. 최신 Chrome
 
 ## OpenTaiko 에셋 라이선스
 
-기본 스킨 에셋은 **이 저장소에 포함되어 있지 않습니다.** `npm run fetch-assets`가 [OpenTaiko](https://github.com/0auBSQ/OpenTaiko) 저장소에서 필요한 파일만 받아 `public/skins/opentaiko/`(git에서 제외됨)에 저장합니다.
+기본 스킨 에셋은 **이 저장소와 배포본에 포함되어 있지 않습니다.** 로컬 개발 시 `npm run fetch-assets`가 [OpenTaiko](https://github.com/0auBSQ/OpenTaiko) 저장소에서 필요한 파일만 받아 `public/skins/opentaiko/`(git에서 제외됨)에 저장합니다.
 
 이 에셋들은 **OpenTaiko Extended License**(받은 폴더의 `LICENSE.md`)를 따릅니다. 요약하면 OpenTaiko와 관련된 영상·방송에서의 사용(광고 수익 포함)은 허용되지만, 공식 저장소의 직접 포크가 아닌 곳에서의 재배포와 그 밖의 상업적 이용은 금지됩니다. 그래서 에셋을 저장소에 커밋하지 않고, 사용하는 사람이 직접 내려받도록 했습니다. 공개 배포할 때도 이 조건을 확인하세요.
 
