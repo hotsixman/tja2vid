@@ -1,4 +1,4 @@
-import type { SkinLayout, SkinManifest } from './types';
+import type { DancerConfig, SkinLayout, SkinManifest } from './types';
 
 /**
  * The official OpenTaiko repository, pinned to a commit so the layout below
@@ -147,6 +147,11 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     ka: 'Sounds/Taiko/ka.ogg',
   },
   layout: OPENTAIKO_LAYOUT,
+  dancer: {
+    dir: `${G}/2_Dancer/Dashy`,
+    frameCount: 42,
+    config: { count: 1, x: [968], y: [770], beat: 80, gauge: [0] },
+  },
   credits:
     'Skin: OpenTaiko "Open-World Memories" © DashyDesu, OpenTaiko Team — OpenTaiko Extended License.',
 };
@@ -198,6 +203,25 @@ const INI_VECTORS: [keyof SkinLayout, string][] = [
   ['balloonNumberSize', 'Game_Balloon_Number_Size'],
   ['balloonNumberInterval', 'Game_Balloon_Number_Interval'],
 ];
+
+/** Parses an OpenTaiko DancerConfig.txt onto a base config. */
+export function parseDancerConfig(text: string, base: Partial<DancerConfig> = {}): DancerConfig {
+  const ini = parseIni(text);
+  const list = (k: string) => nums(ini[k]);
+  const count = list('Game_Dancer_Count')[0] ?? base.count ?? 1;
+  const x = list('Game_Dancer_X');
+  const y = list('Game_Dancer_Y');
+  const motion = list('Game_Dancer_Motion');
+  const gauge = list('Game_Dancer_Gauge');
+  return {
+    count,
+    x: x.length ? x : (base.x ?? [960]),
+    y: y.length ? y : (base.y ?? [770]),
+    motion: motion.length ? motion : (base.motion ?? [0]),
+    beat: list('Game_Dancer_Beat')[0] ?? base.beat ?? 8,
+    gauge: gauge.length ? gauge : (base.gauge ?? [0]),
+  };
+}
 
 export function parseIni(text: string): Record<string, string> {
   const out: Record<string, string> = {};

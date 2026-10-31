@@ -41,6 +41,7 @@
   let musicVolume = $state(1);
   let hitVolume = $state(0.7);
   let showTitle = $state(true);
+  let showDancer = $state(true);
   let titleOverride = $state('');
   let subtitleOverride = $state('');
   let preRollSec = $state(2);
@@ -117,6 +118,7 @@
     skin && play && parsed
       ? new TaikoRenderer(skin, play, {
           showTitle,
+        showDancer,
           title: titleOverride || parsed.meta.title,
           subtitle: subtitleOverride || parsed.meta.subtitle,
         })
@@ -241,6 +243,7 @@
       });
       const r = new TaikoRenderer(skin, play, {
         showTitle,
+        showDancer,
         title: titleOverride || parsed.meta.title,
         subtitle: subtitleOverride || parsed.meta.subtitle,
       });
@@ -407,6 +410,10 @@
         </label>
       </div>
       <label class="check"><input type="checkbox" bind:checked={showTitle} /> 곡 제목 표시</label>
+      <label class="check">
+        <input type="checkbox" bind:checked={showDancer} disabled={!skin?.dancer} /> 댄서 표시
+        {#if skin && !skin.dancer}<small class="hint">(이 스킨에는 댄서가 없음)</small>{/if}
+      </label>
 
       <h2>4. 스킨</h2>
       <p class="hint">{skinStatus}</p>

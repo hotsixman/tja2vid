@@ -92,6 +92,8 @@ const FILES = [
   `${BG}/Down/0/Down_Clear.png`,
   `${BG}/Down/0/Down_Scroll.png`,
   `${G}/8_Footer/0.png`,
+  `${G}/2_Dancer/Dashy/DancerConfig.txt`,
+  ...Array.from({ length: 42 }, (_, i) => `${G}/2_Dancer/Dashy/1/${i}.png`),
 ];
 
 const exists = (p) => access(p).then(() => true, () => false);

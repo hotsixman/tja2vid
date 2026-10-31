@@ -11,6 +11,7 @@ Svelte 5 + Vite로 만들었고, 모든 처리(채보 해석, 렌더링, 인코�
 - OpenTaiko 기본 스킨("Open-World Memories") 에셋과 GameConfig.ini 좌표를 사용한 화면 구성
   - 노트 + 노트 아래 문구 (Don/Do/Ko/Ka/Kat …), 마디선, 판정 원, 판정 문구, 폭발 이펙트, 날아가는 노트, 레인 플래시
   - 북 타격 애니메이션, 콤보, 점수, 난이도 아이콘, 클리어 게이지와 혼, GOGO 타임 불꽃, 연타/풍선 카운터, 배경, 곡 제목
+  - 댄서 (OpenTaiko `2_Dancer` 형식, BPM에 맞춘 모션, 게이지 조건, `DancerConfig.txt` 지원)
 - 실시간 미리보기 (타격음 포함)
 - **60fps / 120fps** 선택, 720p ~ 4K 해상도, 화질 선택
 - WebCodecs로 인코딩: MP4 (H.264 + AAC/Opus), 지원하지 않는 브라우저에서는 WebM (VP9 + Opus)
@@ -85,6 +86,8 @@ WebCodecs(`VideoEncoder`)와 `OffscreenCanvas`가 필요합니다. 최신 Chrome
 
 - 이미지 키 목록: `src/lib/skin/types.ts`의 `IMAGE_KEYS`
 - 레이아웃 필드와 의미: `src/lib/skin/types.ts`의 `SkinLayout`, 기본값은 `src/lib/skin/opentaiko.ts`
+- 댄서: `"dancer": { "dir": "dancers", "frameCount": 10, "config": { "count": 1, "x": [960], "y": [770], "motion": [0,1,2,1], "beat": 8, "gauge": [0] } }`
+  — 프레임은 `dancers/1/0.png …`(댄서 2는 `dancers/2/…`), `dancers/DancerConfig.txt`가 있으면 그 값이 우선합니다.
 - 스프라이트 시트 규칙은 OpenTaiko와 같습니다 (예: `notes`는 13열 시트, `seNotes`는 12행, `judge`는 5행, 폭발은 7프레임 × 4행).
 
 새 스킨을 앱에 내장하려면 `SkinManifest`를 하나 더 만들어 `loadSkin(urlResolver('/skins/<id>/'), MY_MANIFEST)`로 불러오면 됩니다.
@@ -118,5 +121,5 @@ npm run build
 ## 알려진 제한
 
 - 1인 플레이 화면만 지원합니다 (더블 플레이 채보는 P1/P2를 따로 고를 수 있습니다).
-- 캐릭터, 댄서, 몹, 단위도장/타워 연출, 쿠스다마 전용 연출, `#JPOSSCROLL`, 세로 스크롤(복소수 `#SCROLL`의 허수부)은 아직 그리지 않습니다.
+- 캐릭터, 몹, 단위도장/타워 연출, 쿠스다마 전용 연출, `#JPOSSCROLL`, 세로 스크롤(복소수 `#SCROLL`의 허수부)은 아직 그리지 않습니다.
 - 점수는 진타(真打)에 가까운 단순화된 계산이고, 게이지 증가량은 난이도별 근사치입니다.

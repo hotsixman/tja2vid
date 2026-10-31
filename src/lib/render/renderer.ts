@@ -7,6 +7,8 @@ export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 export interface RenderOptions {
   /** Draw the song title in the top-right corner. */
   showTitle: boolean;
+  /** Draw the skin's dancers (if it has any). Defaults to true. */
+  showDancer?: boolean;
   title: string;
   subtitle: string;
 }
@@ -115,6 +117,8 @@ export class TaikoRenderer implements FrameRenderer {
   private readonly rollByNote = new Map<number, RollState>();
   private readonly clearTime: number;
   private readonly strips = new Map<string, OffscreenCanvas | null>();
+  /** BPM change points with cumulative beat count, for beat-synced animation. */
+  private readonly beatPoints: { time: number; bpm: number; beats: number }[];
 
   constructor(
     private readonly skin: LoadedSkin,
@@ -131,6 +135,7 @@ export class TaikoRenderer implements FrameRenderer {
       { hits: play.hits.filter((h) => h.source !== 'note'), key: 'laneYellow' },
     ];
     for (const r of play.rolls) this.rollByNote.set(r.noteIndex, r);
+    this.beatPoints = buildBeatPoints(play);
     const g = play.gauge.find((s) => s.value >= play.clearThreshold);
     this.clearTime = g ? g.time : Infinity;
   }
@@ -299,9 +304,45 @@ export class TaikoRenderer implements FrameRenderer {
       ctx.globalAlpha = 1;
     }
 
+    if (this.opts.showDancer !== false) this.drawDancers(ctx, t);
+
     // Footer, bottom-aligned.
     const footer = this.img('footer');
     if (footer) ctx.drawImage(footer, 0, this.height - footer.height);
+  }
+
+  /** Number of beats elapsed at song time t (follows BPM changes). */
+  private beatsAt(t: number): number {
+    const pts = this.beatPoints;
+    if (!pts.length) return (t * 120) / 60000;
+    let lo = 0;
+    let hi = pts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (pts[mid].time <= t) lo = mid;
+      else hi = mid - 1;
+    }
+    const p = pts[lo];
+    return p.beats + ((t - p.time) * Math.abs(p.bpm)) / 60000;
+  }
+
+  /** OpenTaiko dancers: one motion cycle every `beat` beats, shown once the gauge reaches their threshold. */
+  private drawDancers(ctx: Ctx2D, t: number): void {
+    const d = this.skin.dancer;
+    if (!d || d.config.motion.length < 2) return;
+    const { config, frames } = d;
+    const cycle = this.beatsAt(t) / Math.max(1e-6, config.beat);
+    const phase = cycle - Math.floor(cycle);
+    const motionFrame = config.motion[Math.floor(phase * (config.motion.length - 1))] ?? 0;
+    const gauge = stepAt(this.play.gauge, t);
+    for (let i = 0; i < config.count; i++) {
+      if (gauge < (config.gauge[i] ?? config.gauge[0] ?? 0)) continue;
+      const im = frames[i]?.[motionFrame];
+      if (!im) continue;
+      const x = config.x[i] ?? config.x[0];
+      const y = config.y[i] ?? config.y[0];
+      ctx.drawImage(im, x - im.width / 2, y - im.height / 2);
+    }
   }
 
   private drawLane(ctx: Ctx2D, t: number): void {
@@ -714,6 +755,21 @@ export class TaikoRenderer implements FrameRenderer {
     drawText(this.opts.title, L.titleFontSize, L.title[1]);
     drawText(this.opts.subtitle, L.subtitleFontSize, L.title[1] + L.subtitleFontSize + 14);
   }
+}
+
+function buildBeatPoints(play: Playthrough): { time: number; bpm: number; beats: number }[] {
+  const raw = [...play.course.bars, ...play.course.notes]
+    .map((x) => ({ time: x.time, bpm: x.bpm }))
+    .sort((a, b) => a.time - b.time);
+  const pts: { time: number; bpm: number; beats: number }[] = [];
+  for (const r of raw) {
+    const last = pts[pts.length - 1];
+    if (last && last.bpm === r.bpm) continue;
+    const beats = last ? last.beats + ((r.time - last.time) * Math.abs(last.bpm)) / 60000 : 0;
+    pts.push({ time: r.time, bpm: r.bpm, beats });
+  }
+  // Times before the first point extrapolate from it (negative beats), so the dancer moves during the lead-in.
+  return pts;
 }
 
 function countBefore(times: number[], t: number): number {

@@ -157,6 +157,39 @@ export interface SkinManifest {
   layout: SkinLayout;
   /** Text shown in the UI (credits / license notes). */
   credits?: string;
+  /** Optional dancer set (OpenTaiko 2_Dancer format). */
+  dancer?: DancerManifest;
+}
+
+/**
+ * A dancer set in OpenTaiko's format: `<dir>/1/0.png, 1.png, …` for dancer 1,
+ * `<dir>/2/…` for dancer 2, and an optional `<dir>/DancerConfig.txt` whose
+ * values override the ones given here.
+ */
+export interface DancerManifest {
+  dir: string;
+  /** Frames per dancer. If omitted, frames are probed (0.png, 1.png, …) until one is missing. */
+  frameCount?: number;
+  config?: Partial<DancerConfig>;
+}
+
+export interface DancerConfig {
+  count: number;
+  /** Centre position per dancer. */
+  x: number[];
+  y: number[];
+  /** Frame index sequence for one full motion cycle. */
+  motion: number[];
+  /** Beats per full motion cycle. */
+  beat: number;
+  /** Gauge value (0–100) each dancer needs before it appears. */
+  gauge: number[];
+}
+
+export interface LoadedDancer {
+  config: DancerConfig;
+  /** frames[dancerIndex][frameIndex] */
+  frames: ImageSource[][];
 }
 
 export type ImageSource = ImageBitmap | HTMLImageElement;
@@ -168,6 +201,7 @@ export interface LoadedSkin {
   sounds: Partial<Record<SoundKey, ArrayBuffer>>;
   /** CSS font-family to use for text. */
   fontFamily: string;
+  dancer?: LoadedDancer;
 }
 
 /** Resolves a skin-relative path to its bytes (or null if missing). */

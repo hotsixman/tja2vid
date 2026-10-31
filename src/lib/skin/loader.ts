@@ -1,5 +1,14 @@
-import { OPENTAIKO_MANIFEST, applyOpenTaikoIni, parseIni } from './opentaiko';
-import type { ImageKey, LoadedSkin, SkinFileResolver, SkinManifest, SoundKey } from './types';
+import { OPENTAIKO_MANIFEST, applyOpenTaikoIni, parseDancerConfig, parseIni } from './opentaiko';
+import type {
+  DancerManifest,
+  ImageKey,
+  ImageSource,
+  LoadedDancer,
+  LoadedSkin,
+  SkinFileResolver,
+  SkinManifest,
+  SoundKey,
+} from './types';
 
 /** Resolves files relative to a base URL (e.g. `/skins/opentaiko/`). */
 export function urlResolver(base: string): SkinFileResolver {
@@ -119,7 +128,48 @@ export async function loadSkin(
     })(),
   ]);
 
-  return { manifest, images, sounds, fontFamily };
+  const dancer = manifest.dancer ? await loadDancer(resolve, manifest.dancer).catch(() => undefined) : undefined;
+
+  return { manifest, images, sounds, fontFamily, dancer };
+}
+
+async function decodeImage(resolve: SkinFileResolver, path: string): Promise<ImageSource | null> {
+  const blob = await resolve(path);
+  if (!blob) return null;
+  try {
+    return await createImageBitmap(blob, { premultiplyAlpha: 'premultiply' });
+  } catch {
+    return null;
+  }
+}
+
+/** Loads frames `<dir>/<n>/<i>.png`, probing in parallel chunks when the count is unknown. */
+async function loadFrames(resolve: SkinFileResolver, dir: string, count?: number): Promise<ImageSource[]> {
+  if (count !== undefined) {
+    const all = await Promise.all(Array.from({ length: count }, (_, i) => decodeImage(resolve, `${dir}/${i}.png`)));
+    const firstMissing = all.indexOf(null);
+    return (firstMissing < 0 ? all : all.slice(0, firstMissing)) as ImageSource[];
+  }
+  const frames: ImageSource[] = [];
+  const CHUNK = 16;
+  for (let start = 0; start < 1000; start += CHUNK) {
+    const chunk = await Promise.all(Array.from({ length: CHUNK }, (_, i) => decodeImage(resolve, `${dir}/${start + i}.png`)));
+    for (const f of chunk) {
+      if (!f) return frames;
+      frames.push(f);
+    }
+  }
+  return frames;
+}
+
+async function loadDancer(resolve: SkinFileResolver, m: DancerManifest): Promise<LoadedDancer | undefined> {
+  const cfgFile = await resolve(`${m.dir}/DancerConfig.txt`);
+  const config = cfgFile ? parseDancerConfig(await cfgFile.text(), m.config) : parseDancerConfig('', m.config);
+  const frames = await Promise.all(
+    Array.from({ length: config.count }, (_, i) => loadFrames(resolve, `${m.dir}/${i + 1}`, m.frameCount)),
+  );
+  if (!frames.some((f) => f.length)) return undefined;
+  return { config, frames };
 }
 
 /** Lists manifest images that could not be loaded — handy for the UI. */
