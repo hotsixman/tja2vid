@@ -151,6 +151,8 @@ export interface SkinLayout {
   rollNumber: XY;
   /** In-game song title: right edge and vertical centre. */
   title: XY;
+  /** Titles wider than this are squeezed horizontally (OpenTaiko Game_MusicName_MaxWidth). */
+  titleMaxWidth: number;
   titleFontSize: number;
   subtitleFontSize: number;
   /** Background bands. */
@@ -174,8 +176,13 @@ export interface SkinLayout {
    * title strips, dan plate, silver/gold/rainbow dan medals, gold bar.
    */
   nameplate: XY;
-  /** Nameplate draw scale, and the plate's offset right of the badge (in 54px-row units). */
+  /**
+   * Nameplate draw scales (plate, and the "1P" badge separately) and the
+   * plate's offset right of the badge (in 54px-row units of the plate scale).
+   * The plate is vertically centred on the badge.
+   */
   nameplateScale: number;
+  nameplateBadgeScale: number;
   nameplatePlateOffset: number;
   /** Where "+score" popups appear (right-aligned over 7 digit slots, bottom anchored). */
   scoreAdd: XY;

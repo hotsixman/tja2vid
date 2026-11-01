@@ -92,6 +92,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   rollFrameFrames: 5,
   rollNumber: [0, 196],
   title: [1890, 52],
+  titleMaxWidth: 960,
   titleFontSize: 52,
   subtitleFontSize: 30,
   bgUpHeight: 282,
@@ -109,6 +110,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingTransition: 'fade',
   nameplate: [12, 552],
   nameplateScale: 1,
+  nameplateBadgeScale: 1,
   nameplatePlateOffset: 38,
   scoreAdd: [24, 440],
 };

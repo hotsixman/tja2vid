@@ -1014,8 +1014,10 @@ export class TaikoRenderer implements FrameRenderer {
     const s = L.nameplateScale;
     const k = (rowH / 54) * s; // sheet is authored with 54px rows at 720p
     const w = im.width;
-    const [x, y] = L.nameplate;
+    const bs = L.nameplateBadgeScale;
+    const [x, by] = L.nameplate;
     const px = x + L.nameplatePlateOffset * k; // plate starts right of the badge's centre
+    const y = by + (rowH * bs - rowH * s) / 2; // plate vertically centred on the badge
     const row = (r: number, dx = px) => ctx.drawImage(im, 0, r * rowH, w, rowH, dx, y, w * s, rowH * s);
 
     row(3); // plate
@@ -1025,7 +1027,7 @@ export class TaikoRenderer implements FrameRenderer {
       if (info.danMedal) row(7 + info.danMedal); // 8 silver, 9 gold, 10 rainbow
     }
     row(4); // outline
-    ctx.drawImage(im, 0, 0, rowH, rowH, x, y, rowH * s, rowH * s); // "1P" badge
+    ctx.drawImage(im, 0, 0, rowH, rowH, x, by, rowH * bs, rowH * bs); // "1P" badge
 
     const font = this.skin.fontFamily;
     const text = (s: string, cx: number, cy: number, size: number, maxW: number, fill: string, stroke = '') => {
@@ -1285,7 +1287,8 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.lineWidth = size / 5;
     ctx.strokeStyle = '#000';
     ctx.fillStyle = '#fff';
-    const maxW = this.width * 0.5;
+    // Like OpenTaiko: titles wider than the max width are squeezed horizontally.
+    const maxW = L.titleMaxWidth;
     const w = ctx.measureText(text).width;
     ctx.translate(L.title[0], L.title[1]);
     if (w > maxW) ctx.scale(maxW / w, 1);

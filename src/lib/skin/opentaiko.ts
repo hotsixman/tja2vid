@@ -63,6 +63,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   rollFrameFrames: 5,
   rollNumber: [383, 209],
   title: [1890, 63],
+  titleMaxWidth: 990,
   titleFontSize: 54,
   subtitleFontSize: 30,
   bgUpHeight: 288,
@@ -79,6 +80,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   loadingSubtitleStroke: '',
   nameplate: [0, 450],
   nameplateScale: 1,
+  nameplateBadgeScale: 1,
   nameplatePlateOffset: 38,
   scoreAdd: [27, 279],
   loadingTransition: 'curtain',
@@ -226,6 +228,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   rollFrameFrames: 5,
   rollNumber: [313, 122],
   title: [1260, 42],
+  titleMaxWidth: 660,
   titleFontSize: 36,
   subtitleFontSize: 20,
   bgUpHeight: 192,
@@ -242,6 +245,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   loadingSubtitleStroke: '',
   nameplate: [-5, 297],
   nameplateScale: 1,
+  nameplateBadgeScale: 1,
   nameplatePlateOffset: 38,
   scoreAdd: [20, 186],
   loadingTransition: 'curtain',
@@ -363,6 +367,8 @@ export function applyOpenTaikoIni(
   l.loadingSubtitleFontSize = pt('SongLoading_SubTitle_FontSize') ?? l.loadingSubtitleFontSize;
   // In-game title: Game_MusicName_X/Y is the top-right corner.
   l.titleFontSize = pt('Game_MusicName_FontSize') ?? l.titleFontSize;
+  const mw = nums(game.Game_MusicName_MaxWidth)[0];
+  if (mw !== undefined && mw > 0) l.titleMaxWidth = mw;
   const mx = nums(game.Game_MusicName_X)[0];
   const my = nums(game.Game_MusicName_Y)[0];
   if (mx !== undefined) l.title = [mx, l.title[1]];
@@ -381,6 +387,8 @@ export function applyOpenTaikoIni(
   // tja2vid extensions: nameplate scale / plate offset
   const nps = nums(game.Game_Taiko_NamePlate_Scale)[0];
   if (nps !== undefined && nps > 0) l.nameplateScale = nps;
+  const npb = nums(game.Game_Taiko_NamePlate_BadgeScale)[0];
+  if (npb !== undefined && npb > 0) l.nameplateBadgeScale = npb;
   const npo = nums(game.Game_Taiko_NamePlate_PlateOffset)[0];
   if (npo !== undefined) l.nameplatePlateOffset = npo;
   // tja2vid extension: SongLoading_Transition=fade|curtain
