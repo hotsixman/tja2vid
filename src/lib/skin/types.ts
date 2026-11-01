@@ -159,6 +159,8 @@ export interface SkinLayout {
   /** Digit scales (OpenTaiko Game_Balloon_Roll_Number_Scale / Game_Balloon_Balloon_Number_Scale). */
   rollNumberScale: number;
   balloonNumberScale: number;
+  /** Digit spacing for the balloon counter (0 = same as balloonNumberInterval). */
+  balloonDigitInterval: number;
   /** In-game song title: right edge and vertical centre. */
   title: XY;
   /** Titles wider than this are squeezed horizontally (OpenTaiko Game_MusicName_MaxWidth). */

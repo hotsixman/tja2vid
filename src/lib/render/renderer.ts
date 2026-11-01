@@ -1510,7 +1510,8 @@ export class TaikoRenderer implements FrameRenderer {
         this.draw(ctx, bk, L.balloon[0] + shake, L.balloon[1]);
         this.draw(ctx, 'balloon', L.balloonFrame[0], L.balloonFrame[1]);
         const bs = L.balloonNumberScale;
-        this.drawDigits(ctx, 'rollNumber', remaining, this.counterCenter(L.balloonNumber[0], bs), L.balloonNumber[1], L.balloonNumberInterval[0], bs, bs);
+        const bi = L.balloonDigitInterval || L.balloonNumberInterval[0];
+        this.drawDigits(ctx, 'rollNumber', remaining, this.counterCenter(L.balloonNumber[0], bs, bi), L.balloonNumber[1], bi, bs, bs);
         continue;
       }
 
@@ -1542,10 +1543,10 @@ export class TaikoRenderer implements FrameRenderer {
    * numX − interval·(j − n/2), which centres every digit group on
    * numX + (interval + glyph width) / 2 whatever the digit count.
    */
-  private counterCenter(numX: number, scale = 1): number {
+  private counterCenter(numX: number, scale = 1, interval = this.skin.manifest.layout.balloonNumberInterval[0]): number {
     const im = this.img('rollNumber');
     const w = im ? (im.width / 10) * scale : 0;
-    return numX + (this.skin.manifest.layout.balloonNumberInterval[0] + w) / 2;
+    return numX + (interval + w) / 2;
   }
 
   /** Index range [from, to) of the newest `max` items that started within `windowMs` before t. */

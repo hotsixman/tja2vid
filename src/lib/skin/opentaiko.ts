@@ -64,6 +64,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   rollNumber: [383, 209],
   rollNumberScale: 1,
   balloonNumberScale: 0.879,
+  balloonDigitInterval: 0,
   title: [1890, 63],
   titleMaxWidth: 990,
   titleFontSize: 54,
@@ -263,6 +264,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   rollNumber: [313, 122],
   rollNumberScale: 1,
   balloonNumberScale: 0.879,
+  balloonDigitInterval: 0,
   title: [1260, 42],
   titleMaxWidth: 660,
   titleFontSize: 36,
@@ -436,6 +438,9 @@ export function applyOpenTaikoIni(
   l.genreFontSize = pt('Game_GenreText_FontSize') ?? l.genreFontSize;
   const rns = nums(game.Game_Balloon_Roll_Number_Scale)[0];
   if (rns !== undefined && rns > 0) l.rollNumberScale = rns;
+  // tja2vid extension: separate digit spacing for the balloon counter
+  const bdi = nums(game.Game_Balloon_Balloon_Number_Interval)[0];
+  if (bdi !== undefined && bdi > 0) l.balloonDigitInterval = bdi;
   const bns = nums(game.Game_Balloon_Balloon_Number_Scale)[0];
   if (bns !== undefined && bns > 0) l.balloonNumberScale = bns;
   // In-game title: Game_MusicName_X/Y is the top-right corner.
