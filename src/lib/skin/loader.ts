@@ -459,11 +459,12 @@ export async function loadSkin(
     })(),
   ]);
 
-  const [dancer, character] = await Promise.all([
+  const [dancer, character, hitEffect] = await Promise.all([
     manifest.dancer ? loadDancer(resolve, manifest.dancer).catch(() => undefined) : undefined,
     manifest.character
       ? loadCharacter(resolve, manifest.character, manifest.resolution).catch(() => undefined)
       : undefined,
+    manifest.hitEffect ? loadHitEffect(resolve, manifest.hitEffect).catch(() => undefined) : undefined,
   ]);
 
   // TJAPlayer3 skins split Judge.png into 60px rows (at 720p) instead of 5 equal rows.
@@ -472,7 +473,7 @@ export async function loadSkin(
     manifest.layout.judgeRows = Math.max(1, Math.round(images.judge.height / rowH));
   }
 
-  return { manifest, images, sounds, fontFamily, dancer, character, layerImages };
+  return { manifest, images, sounds, fontFamily, dancer, character, hitEffect, layerImages };
 }
 
 /** Loads frames `<dir>/<i>.png`, probing in parallel chunks when the count is unknown. */
@@ -504,6 +505,15 @@ async function loadDancer(resolve: SkinFileResolver, m: DancerManifest): Promise
   );
   if (!frames.some((f) => f.length)) return undefined;
   return { config: { ...config, count }, frames };
+}
+
+async function loadHitEffect(
+  resolve: SkinFileResolver,
+  m: NonNullable<SkinManifest['hitEffect']>,
+): Promise<LoadedSkin['hitEffect']> {
+  const [great, greatBig] = await Promise.all([loadFrames(resolve, `${m.dir}/Great`), loadFrames(resolve, `${m.dir}/Great_Big`)]);
+  if (!great.length && !greatBig.length) return undefined;
+  return { great, greatBig: greatBig.length ? greatBig : great, frameMs: m.frameMs ?? 20 };
 }
 
 /** Lists manifest images that could not be loaded — handy for the UI. */

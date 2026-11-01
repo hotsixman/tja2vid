@@ -102,6 +102,11 @@ export interface SkinLayout {
   judgeMove: XY;
   /** Rows in Judge.png (OpenTaiko: 5, TJAPlayer3: 4 rows of 60px at 720p). */
   judgeRows: number;
+  /**
+   * Animate note faces (OpenTaiko Game_Notes_Anime): from 50/150/300 combo the
+   * notes alternate between rows of Notes.png every quarter beat.
+   */
+  notesAnime: boolean;
   taikoBackground: XY;
   taikoFrame: XY;
   taiko: XY;
@@ -142,7 +147,7 @@ export interface SkinLayout {
   rollFrame: XY;
   rollFrameFrames: number;
   rollNumber: XY;
-  /** Song title, right-aligned at this point (baseline). */
+  /** In-game song title: right edge and vertical centre. */
   title: XY;
   titleFontSize: number;
   subtitleFontSize: number;
@@ -156,9 +161,11 @@ export interface SkinLayout {
   loadingTitleFontSize: number;
   loadingSubtitleFontSize: number;
   loadingCharaMove: XY;
-  /** Text colours for the loading screen title. */
+  /** Text colours for the loading screen (empty stroke = no outline). */
   loadingTitleColor: string;
   loadingTitleStroke: string;
+  loadingSubtitleColor: string;
+  loadingSubtitleStroke: string;
 }
 
 export interface SkinManifest {
@@ -177,6 +184,11 @@ export interface SkinManifest {
   dancer?: DancerManifest;
   /** Optional player character (OpenTaiko 1_Chara / 11_Characters format). */
   character?: CharacterManifest;
+  /**
+   * Optional hit effect sequences shown at the judge circle on every hit:
+   * `<dir>/Great/0.png …`, `Great_Big`, `Good`, `Good_Big` (OpenTaiko 10_Effects/Hit).
+   */
+  hitEffect?: { dir: string; frameMs?: number };
   /**
    * Data-driven background. When present it replaces the built-in
    * OpenTaiko-style background (the bgUp… and bgDown… images).
@@ -313,6 +325,7 @@ export interface LoadedSkin {
   fontFamily: string;
   dancer?: LoadedDancer;
   character?: LoadedCharacter;
+  hitEffect?: { great: ImageSource[]; greatBig: ImageSource[]; frameMs: number };
   /** Images used by background layers, keyed by BackgroundLayer.image. */
   layerImages: Record<string, ImageSource>;
 }

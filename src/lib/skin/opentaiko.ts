@@ -23,6 +23,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   judge: [554, 234],
   judgeMove: [0, 20],
   judgeRows: 5,
+  notesAnime: true,
   taikoBackground: [0, 276],
   taikoFrame: [495, 204],
   taiko: [303, 324],
@@ -61,19 +62,21 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   rollFrame: [218, -3],
   rollFrameFrames: 5,
   rollNumber: [383, 209],
-  title: [1890, 70],
-  titleFontSize: 52,
+  title: [1890, 63],
+  titleFontSize: 54,
   subtitleFontSize: 30,
   bgUpHeight: 288,
   bgDownY: 540,
   loadingPlate: [960, 540],
   loadingTitle: [960, 420],
   loadingSubtitle: [960, 488],
-  loadingTitleFontSize: 46,
-  loadingSubtitleFontSize: 30,
+  loadingTitleFontSize: 62,
+  loadingSubtitleFontSize: 40,
   loadingCharaMove: [375, -120],
   loadingTitleColor: '#ffffff',
   loadingTitleStroke: '#000000',
+  loadingSubtitleColor: '#000000',
+  loadingSubtitleStroke: '',
 };
 
 /**
@@ -157,6 +160,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     ka: 'Sounds/Taiko/ka.ogg',
   },
   layout: OPENTAIKO_LAYOUT,
+  hitEffect: { dir: `${G}/10_Effects/Hit` },
 };
 
 /**
@@ -174,6 +178,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   judge: [364, 152],
   judgeMove: [0, 20],
   judgeRows: 5,
+  notesAnime: true,
   taikoBackground: [0, 184],
   taikoFrame: [329, 136],
   taiko: [205, 206],
@@ -212,19 +217,21 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   rollFrame: [218, -3],
   rollFrameFrames: 5,
   rollNumber: [313, 122],
-  title: [1260, 47],
-  titleFontSize: 35,
+  title: [1260, 42],
+  titleFontSize: 36,
   subtitleFontSize: 20,
   bgUpHeight: 192,
   bgDownY: 360,
   loadingPlate: [640, 360],
   loadingTitle: [640, 280],
   loadingSubtitle: [640, 325],
-  loadingTitleFontSize: 31,
-  loadingSubtitleFontSize: 20,
+  loadingTitleFontSize: 41,
+  loadingSubtitleFontSize: 27,
   loadingCharaMove: [250, -80],
   loadingTitleColor: '#ffffff',
   loadingTitleStroke: '#000000',
+  loadingSubtitleColor: '#000000',
+  loadingSubtitleStroke: '',
 };
 
 /**
@@ -332,10 +339,31 @@ export function applyOpenTaikoIni(
   }
   const pad = nums(game.Game_Score_Padding)[0];
   if (pad !== undefined) l.scorePadding = pad;
-  const tfs = nums(game.SongLoading_Title_FontSize)[0];
-  if (tfs !== undefined) l.loadingTitleFontSize = tfs;
-  const sfs = nums(game.SongLoading_SubTitle_FontSize)[0];
-  if (sfs !== undefined) l.loadingSubtitleFontSize = sfs;
+  // OpenTaiko font sizes are in points.
+  const pt = (k: string) => {
+    const v = nums(game[k])[0];
+    return v === undefined ? undefined : Math.round((v * 4) / 3);
+  };
+  l.loadingTitleFontSize = pt('SongLoading_Title_FontSize') ?? l.loadingTitleFontSize;
+  l.loadingSubtitleFontSize = pt('SongLoading_SubTitle_FontSize') ?? l.loadingSubtitleFontSize;
+  // In-game title: Game_MusicName_X/Y is the top-right corner.
+  l.titleFontSize = pt('Game_MusicName_FontSize') ?? l.titleFontSize;
+  const mx = nums(game.Game_MusicName_X)[0];
+  const my = nums(game.Game_MusicName_Y)[0];
+  if (mx !== undefined) l.title = [mx, l.title[1]];
+  if (my !== undefined) l.title = [l.title[0], my + l.titleFontSize / 2];
+  const color = (k: string) => {
+    const v = game[k]?.trim();
+    if (!v) return undefined;
+    const m = /^#([0-9a-f]{2})([0-9a-f]{6})$/i.exec(v); // .NET #AARRGGBB
+    if (m) return parseInt(m[1], 16) === 0 ? '' : `#${m[2]}${m[1]}`;
+    return v;
+  };
+  l.loadingTitleColor = color('SongLoading_Title_ForeColor') ?? l.loadingTitleColor;
+  l.loadingTitleStroke = color('SongLoading_Title_BackColor') ?? l.loadingTitleStroke;
+  l.loadingSubtitleColor = color('SongLoading_SubTitle_ForeColor') ?? l.loadingSubtitleColor;
+  l.loadingSubtitleStroke = color('SongLoading_SubTitle_BackColor') ?? l.loadingSubtitleStroke;
+  if (game.Game_Notes_Anime !== undefined) l.notesAnime = /^(1|true)$/i.test(game.Game_Notes_Anime.trim());
   const sine = nums(game.Game_Effect_FlyingNotes_Sine)[0];
   if (sine !== undefined) l.flyingSine = sine;
 

@@ -52,6 +52,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   judge: [527, 210],
   judgeMove: [0, 22],
   judgeRows: 5,
+  notesAnime: false,
   taikoBackground: [0, 282],
   taikoFrame: [512, 282],
   taiko: [320, 320],
@@ -90,7 +91,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   rollFrame: [250, 20],
   rollFrameFrames: 5,
   rollNumber: [0, 196],
-  title: [1890, 70],
+  title: [1890, 52],
   titleFontSize: 52,
   subtitleFontSize: 30,
   bgUpHeight: 282,
@@ -103,6 +104,8 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingCharaMove: [0, 140],
   loadingTitleColor: '#ffffff',
   loadingTitleStroke: '#15121f',
+  loadingSubtitleColor: '#ffd2ec',
+  loadingSubtitleStroke: '#15121f',
 };
 
 const BACKGROUND: BackgroundSpec = {

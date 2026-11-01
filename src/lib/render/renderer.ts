@@ -155,6 +155,9 @@ export class TaikoRenderer implements FrameRenderer {
     this.beatPoints = buildBeatPoints(play);
     const g = play.gauge.find((s) => s.value >= play.clearThreshold);
     this.clearTime = g ? g.time : Infinity;
+    play.judgements.forEach((j, k) => {
+      if (k + 1 === 50 || k + 1 === 300) this.faceLagStarts.push(j.time);
+    });
     // Needs beatPoints and clearTime.
     this.charaSegments = this.buildCharaSegments();
   }
@@ -283,15 +286,17 @@ export class TaikoRenderer implements FrameRenderer {
 
   private drawPlay(ctx: Ctx2D, t: number): void {
     this.drawBackground(ctx, t);
-    if (this.opts.showCharacter !== false) this.drawCharacter(ctx, t);
     this.drawLane(ctx, t);
     this.drawBars(ctx, t);
     this.drawJudgeCircle(ctx);
     this.drawGogoFire(ctx, t);
     this.drawExplosions(ctx, t);
+    this.drawHitEffect(ctx, t);
     this.drawNotes(ctx, t);
     this.drawTaikoPanel(ctx, t);
     this.drawGauge(ctx, t);
+    // Above the lane and gauge (the balloon pose overlaps the lane), below the counters.
+    if (this.opts.showCharacter !== false) this.drawCharacter(ctx, t);
     this.drawRollAndBalloon(ctx, t);
     this.drawJudgeText(ctx, t);
     this.drawFlyingNotes(ctx, t);
@@ -341,8 +346,8 @@ export class TaikoRenderer implements FrameRenderer {
       this.opts.subtitle,
       L.loadingSubtitle,
       L.loadingSubtitleFontSize,
-      L.loadingTitleColor,
-      L.loadingTitleStroke,
+      L.loadingSubtitleColor,
+      L.loadingSubtitleStroke,
     );
     ctx.globalAlpha = baseAlpha;
   }
@@ -371,6 +376,8 @@ export class TaikoRenderer implements FrameRenderer {
   // ---------------------------------------------------------------- character
 
   private readonly charaSegments: CharaSegment[];
+  /** Times combo reached 50 or 300 (start of OpenTaiko's 664ms face-animation lag). */
+  private readonly faceLagStarts: number[] = [];
 
   /**
    * One-shot character animations as time segments, following OpenTaiko's
@@ -712,6 +719,45 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  /**
+   * Notes.png row for the current face animation frame (OpenTaiko's
+   * GetPxFaceTextureOffset): the face changes every quarter beat from 50 combo,
+   * with a third face from 300 combo, after a short lag once 50/300 is reached.
+   */
+  private faceRow(t: number): number {
+    const L = this.skin.manifest.layout;
+    const notes = this.img('notes');
+    if (!L.notesAnime || !notes) return 0;
+    const rows = Math.floor(notes.height / L.noteSize[1]);
+    const combo = stepAt(this.play.combo, t);
+    if (combo < 50) return 0;
+    const b = this.beatsAt(t);
+    const v = Math.floor((b - Math.floor(b)) * 4); // 0..3, one step per quarter beat
+    const lagStart = this.faceLagStarts.filter((s) => s <= t).pop();
+    const lagEnded = lagStart === undefined || t >= lagStart + 664;
+    let row = 0;
+    if (combo >= 300) row = v % 2 === 1 ? (lagEnded ? 2 : 1) : 0;
+    else if (combo >= 150) row = v % 2 === 1 ? 1 : 0;
+    else row = v <= 1 && lagEnded ? 1 : 0;
+    return row < rows ? row : 0;
+  }
+
+  /** OpenTaiko 10_Effects/Hit sequence: the hit note glows at the judge circle and fades (restarts on every hit). */
+  private drawHitEffect(ctx: Ctx2D, t: number): void {
+    const fx = this.skin.hitEffect;
+    if (!fx) return;
+    const js = this.play.judgements;
+    const i = lowerBound(js, t + 0.0001) - 1;
+    if (i < 0) return;
+    const j = js[i];
+    const frames = j.big ? fx.greatBig : fx.great;
+    const frame = Math.floor((t - j.time) / fx.frameMs);
+    const im = frames[frame];
+    if (!im) return;
+    const L = this.skin.manifest.layout;
+    ctx.drawImage(im, L.hitExplosion[0], L.hitExplosion[1]);
+  }
+
   private drawNotes(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
     const [sx, sy] = L.scrollField;
@@ -721,6 +767,7 @@ export class TaikoRenderer implements FrameRenderer {
     const [seW, seH] = L.seNoteSize;
     const se = this.img('seNotes');
     const seRowH = se ? se.height / 12 : seH;
+    const faceY = this.faceRow(t) * nh;
 
     // Later notes first so earlier ones end up on top.
     for (let i = notes.length - 1; i >= 0; i--) {
@@ -737,7 +784,7 @@ export class TaikoRenderer implements FrameRenderer {
           if (mine) ctx.drawImage(mine, x, sy, nw, nh);
           continue;
         }
-        this.drawRect(ctx, 'notes', NOTE_COL[n.type] * nw, 0, nw, nh, x, sy);
+        this.drawRect(ctx, 'notes', NOTE_COL[n.type] * nw, faceY, nw, nh, x, sy);
         this.drawSe(ctx, se, i, x, sy, seW, seRowH);
         continue;
       }
@@ -755,8 +802,8 @@ export class TaikoRenderer implements FrameRenderer {
         }
         if (x > W || x < -nw * 2) continue;
         const col = NOTE_COL.balloon;
-        this.drawRect(ctx, 'notes', (col + 1) * nw, 0, nw, nh, x + nw, sy);
-        this.drawRect(ctx, 'notes', col * nw, 0, nw, nh, x, sy);
+        this.drawRect(ctx, 'notes', (col + 1) * nw, faceY, nw, nh, x + nw, sy);
+        this.drawRect(ctx, 'notes', col * nw, faceY, nw, nh, x, sy);
         this.drawSe(ctx, se, i, x, sy, seW, seRowH);
         continue;
       }
@@ -766,9 +813,9 @@ export class TaikoRenderer implements FrameRenderer {
       const bodyStart = x + nw / 2;
       const bodyLen = xEnd - bodyStart + nw / 2;
       // Body (stretched), end cap, then head.
-      if (bodyLen > 0) this.drawRect(ctx, 'notes', (head + 1) * nw, 0, nw, nh, bodyStart, sy, bodyLen, nh);
-      this.drawRect(ctx, 'notes', (head + 2) * nw, 0, nw, nh, xEnd + nw / 2, sy);
-      this.drawRect(ctx, 'notes', head * nw, 0, nw, nh, x, sy);
+      if (bodyLen > 0) this.drawRect(ctx, 'notes', (head + 1) * nw, faceY, nw, nh, bodyStart, sy, bodyLen, nh);
+      this.drawRect(ctx, 'notes', (head + 2) * nw, faceY, nw, nh, xEnd + nw / 2, sy);
+      this.drawRect(ctx, 'notes', head * nw, faceY, nw, nh, x, sy);
       // SE text: label at head, "—" stretched to the end.
       if (se) {
         const [ox, oy] = L.seNotesOffset;
@@ -842,7 +889,9 @@ export class TaikoRenderer implements FrameRenderer {
     // Combo.
     const combo = stepAt(this.play.combo, t);
     if (combo >= MIN_COMBO_SHOWN) {
-      this.draw(ctx, 'comboText', L.comboText[0] - 75, L.comboText[1] - 150);
+      // Bottom-centred at comboText, like OpenTaiko.
+      const ct = this.img('comboText');
+      if (ct) ctx.drawImage(ct, L.comboText[0] - ct.width / 2, L.comboText[1] - ct.height);
       const js = this.play.judgements;
       const last = this.lastHitBefore(js, t);
       const pop = t - last < COMBO_POP_MS ? 1 + 0.25 * (1 - (t - last) / COMBO_POP_MS) : 1;
@@ -1003,33 +1052,29 @@ export class TaikoRenderer implements FrameRenderer {
     }
   }
 
+  /** In-game song title (no subtitle), right-aligned and vertically centred at layout.title. */
   private drawTitle(ctx: Ctx2D): void {
     const L = this.skin.manifest.layout;
-    const font = this.skin.fontFamily;
+    const text = this.opts.title;
+    if (!text) return;
+    const size = L.titleFontSize;
+    ctx.save();
+    ctx.font = `${size}px ${this.skin.fontFamily}`;
     ctx.textAlign = 'right';
-    ctx.textBaseline = 'alphabetic';
+    ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    const drawText = (text: string, size: number, y: number) => {
-      if (!text) return;
-      ctx.font = `${size}px ${font}`;
-      ctx.lineWidth = size / 5;
-      ctx.strokeStyle = '#000';
-      ctx.fillStyle = '#fff';
-      const maxW = this.width * 0.6;
-      const w = ctx.measureText(text).width;
-      ctx.save();
-      if (w > maxW) {
-        ctx.translate(L.title[0], 0);
-        ctx.scale(maxW / w, 1);
-        ctx.translate(-L.title[0], 0);
-      }
-      ctx.strokeText(text, L.title[0], y);
-      ctx.fillText(text, L.title[0], y);
-      ctx.restore();
-    };
-    drawText(this.opts.title, L.titleFontSize, L.title[1]);
-    drawText(this.opts.subtitle, L.subtitleFontSize, L.title[1] + L.subtitleFontSize + 14);
+    ctx.lineWidth = size / 5;
+    ctx.strokeStyle = '#000';
+    ctx.fillStyle = '#fff';
+    const maxW = this.width * 0.5;
+    const w = ctx.measureText(text).width;
+    ctx.translate(L.title[0], L.title[1]);
+    if (w > maxW) ctx.scale(maxW / w, 1);
+    ctx.strokeText(text, 0, 0);
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
   }
+
 }
 
 function buildBeatPoints(play: Playthrough): { time: number; bpm: number; beats: number }[] {
