@@ -80,6 +80,17 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   loadingTitleStroke: '#000000',
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
+  scoreRank: [130, 190],
+  comboBalloon: [253, -11],
+  comboBalloonNumber: [277, 54],
+  comboBalloonNumberEx: [277, 54],
+  comboBalloonNumberSize: [80, 93],
+  comboBalloonNumberInterval: [68, 0],
+  comboBalloonText: [606, 99],
+  comboBalloonTextEx: [606, 99],
+  comboBalloonTextRect: [0, 186, 150, 46],
+  genre: [1482, 105],
+  genreFontSize: 24,
   nameplate: [0, 450],
   gogoSplash: {
     frame: [345, 690, 31],
@@ -173,6 +184,10 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     loadingBackgroundWait: 'Graphics/4_SongLoading/Bg_Wait.png',
     loadingFade: 'Graphics/4_SongLoading/Fade.png',
     nameplate: 'Graphics/NamePlate.png',
+    scoreRank: `${G}/ScoreRank.png`,
+    comboBalloon: `${G}/11_Balloon/Combo_1P.png`,
+    comboBalloonNumber: `${G}/11_Balloon/Number_Combo.png`,
+    genreTemplate: `${G}/13_GENRE/Template.png`,
     scoreAdd: `${G}/6_Taiko/Score_1P.png`,
     gogoSplash: `${G}/10_Effects/GoGoSplash.png`,
   },
@@ -262,6 +277,17 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   loadingTitleStroke: '#000000',
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
+  scoreRank: [87, 98],
+  comboBalloon: [253, -11],
+  comboBalloonNumber: [257, 54],
+  comboBalloonNumberEx: [257, 54],
+  comboBalloonNumberSize: [53, 62],
+  comboBalloonNumberInterval: [45, 0],
+  comboBalloonText: [440, 85],
+  comboBalloonTextEx: [440, 85],
+  comboBalloonTextRect: [0, 124, 100, 30],
+  genre: [1015, 70],
+  genreFontSize: 16,
   nameplate: [-5, 297],
   gogoSplash: {
     frame: [230, 460, 31],
@@ -312,6 +338,12 @@ const INI_PAIRS: [keyof SkinLayout, string, string?][] = [
   ['loadingPlate', 'SongLoading_Plate_X', 'SongLoading_Plate_Y'],
   ['nameplate', 'Game_Taiko_NamePlate_X', 'Game_Taiko_NamePlate_Y'],
   ['scoreAdd', 'Game_Score_Add_X', 'Game_Score_Add_Y'],
+  ['scoreRank', 'Game_ScoreRank_X', 'Game_ScoreRank_Y'],
+  ['comboBalloon', 'Game_Balloon_Combo_X', 'Game_Balloon_Combo_Y'],
+  ['comboBalloonNumber', 'Game_Balloon_Combo_Number_X', 'Game_Balloon_Combo_Number_Y'],
+  ['comboBalloonNumberEx', 'Game_Balloon_Combo_Number_Ex_X', 'Game_Balloon_Combo_Number_Ex_Y'],
+  ['comboBalloonText', 'Game_Balloon_Combo_Text_X', 'Game_Balloon_Combo_Text_Y'],
+  ['comboBalloonTextEx', 'Game_Balloon_Combo_Text_Ex_X', 'Game_Balloon_Combo_Text_Ex_Y'],
   ['loadingTitle', 'SongLoading_Title_X', 'SongLoading_Title_Y'],
   ['loadingSubtitle', 'SongLoading_SubTitle_X', 'SongLoading_SubTitle_Y'],
 ];
@@ -329,6 +361,9 @@ const INI_VECTORS: [keyof SkinLayout, string][] = [
   ['balloonNumberSize', 'Game_Balloon_Number_Size'],
   ['balloonNumberInterval', 'Game_Balloon_Number_Interval'],
   ['loadingCharaMove', 'SongLoading_Chara_Move'],
+  ['comboBalloonNumberSize', 'Game_Balloon_Combo_Number_Size'],
+  ['comboBalloonNumberInterval', 'Game_Balloon_Combo_Number_Interval'],
+  ['comboBalloonTextRect', 'Game_Balloon_Combo_Text_Rect'],
 ];
 
 /** Parses an OpenTaiko DancerConfig.txt onto a base config. */
@@ -391,6 +426,10 @@ export function applyOpenTaikoIni(
   };
   l.loadingTitleFontSize = pt('SongLoading_Title_FontSize') ?? l.loadingTitleFontSize;
   l.loadingSubtitleFontSize = pt('SongLoading_SubTitle_FontSize') ?? l.loadingSubtitleFontSize;
+  const gx = nums(game.Game_Genre_X)[0];
+  const gy = nums(game.Game_Genre_Y)[0];
+  if (gx !== undefined || gy !== undefined) l.genre = [gx ?? l.genre[0], gy ?? l.genre[1]];
+  l.genreFontSize = pt('Game_GenreText_FontSize') ?? l.genreFontSize;
   // In-game title: Game_MusicName_X/Y is the top-right corner.
   l.titleFontSize = pt('Game_MusicName_FontSize') ?? l.titleFontSize;
   const mw = nums(game.Game_MusicName_MaxWidth)[0];

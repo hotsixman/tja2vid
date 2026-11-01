@@ -10,6 +10,8 @@ export interface RenderOptions {
   showTitle: boolean;
   /** Draw the skin's dancers (if it has any). Defaults to true. */
   showDancer?: boolean;
+  /** Genre plate under the in-game title; omitted or empty text = not drawn. */
+  genre?: { text: string; background: string; color: string };
   /** Result animation after the last note. Defaults to 'dondaFullCombo' (perfect autoplay). */
   endResult?: EndResult;
   /** Player nameplate; omitted = not drawn. */
@@ -321,8 +323,8 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawLane(ctx, t);
     // Lane frame (black borders) goes under bar lines, effects and notes, so hit effects overlap it.
     this.draw(ctx, 'taikoFrame', this.skin.manifest.layout.taikoFrame[0], this.skin.manifest.layout.taikoFrame[1]);
-    this.drawBars(ctx, t);
     this.drawJudgeCircle(ctx);
+    this.drawBars(ctx, t); // bar lines go over the judge circle
     this.drawGogoFire(ctx, t);
     this.drawExplosions(ctx, t);
     this.drawHitEffect(ctx, t);
@@ -332,12 +334,156 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawGauge(ctx, t);
     // Above the lane and gauge (the balloon pose overlaps the lane), below the counters.
     if (this.opts.showCharacter !== false) this.drawCharacter(ctx, t);
+    this.drawScoreRank(ctx, t); // over the character
     this.drawScoreAdds(ctx, t); // over the character, like the arcade
+    this.drawComboBalloon(ctx, t);
     this.drawRollAndBalloon(ctx, t);
     this.drawJudgeText(ctx, t);
     this.drawFlyingNotes(ctx, t);
     this.drawEndAnimation(ctx, t);
     if (this.opts.showTitle) this.drawTitle(ctx);
+    this.drawGenre(ctx);
+  }
+
+  // ---------------------------------------------------------------- score rank / combo balloon / genre
+
+  /**
+   * Score rank (OpenTaiko CActImplScoreRank): each time the score passes
+   * 500k/600k/700k/800k/900k/950k/max, that rank's badge plays for 3s — slides
+   * up 20px while fading in (255ms), pops (sin, +20%, 180ms), holds, then rises
+   * and fades out (255ms). Later ranks draw over earlier ones.
+   */
+  private drawScoreRank(ctx: Ctx2D, t: number): void {
+    const im = this.img('scoreRank');
+    if (!im) return;
+    const L = this.skin.manifest.layout;
+    const h = im.height / 7;
+    const sc = this.play.score;
+    const max = sc[sc.length - 1].value;
+    const ranks = [500000, 600000, 700000, 800000, 900000, 950000, Math.max(max, 950001)];
+    const base = ctx.globalAlpha;
+    ranks.forEach((r, i) => {
+      const hit = sc.find((s) => s.value >= r);
+      if (!hit) return;
+      const v = t - hit.time;
+      if (v < 0 || v > 3000) return;
+      let alpha = 1;
+      let dy = 0;
+      let scale = 1;
+      const move = L.judgeMove[1]; // OpenTaiko reuses Game_Judge_Move
+      if (v <= 255) {
+        alpha = v / 255;
+        dy = (1 - v / 255) * move;
+      } else if (v <= 435) scale = 1 + Math.sin(((v - 255) * Math.PI) / 180) * 0.2;
+      else if (v >= 2745) {
+        alpha = 1 - (v - 2745) / 255;
+        dy = -((v - 2745) / 255) * move;
+      }
+      ctx.globalAlpha = base * Math.max(0, alpha);
+      const w = im.width * scale;
+      const hh = h * scale;
+      ctx.drawImage(im, 0, h * i, im.width, h, L.scoreRank[0] - w / 2, L.scoreRank[1] + dy - hh / 2, w, hh);
+    });
+    ctx.globalAlpha = base;
+  }
+
+  /**
+   * Combo balloon (OpenTaiko CActImplComboBalloon): at 50 combo and every 100
+   * combo a scroll opens with the combo count, on a 70ms counter (1–42):
+   * plate frames 0/0/1/2… with fades at both ends.
+   */
+  private drawComboBalloon(ctx: Ctx2D, t: number): void {
+    const plate = this.img('comboBalloon');
+    const nums = this.img('comboBalloonNumber');
+    if (!plate || !nums) return;
+    const L = this.skin.manifest.layout;
+    const js = this.play.judgements;
+    // Most recent milestone at or before t.
+    let start = -1;
+    let combo = 0;
+    for (let i = lowerBound(js, t + 0.0001) - 1; i >= 0 && t - js[i].time <= 42 * 70; i--) {
+      const c = i + 1;
+      if (c === 50 || c % 100 === 0) {
+        start = js[i].time;
+        combo = c;
+        break;
+      }
+    }
+    if (start < 0) return;
+    const v = 1 + Math.floor((t - start) / 70);
+    if (v > 42) return;
+    const edge = Math.min(v, 43 - v); // 1,2,3,4,5,… from either end
+    const frame = edge <= 2 ? 0 : edge === 3 ? 1 : 2;
+    const plateA = edge === 1 ? 64 / 255 : edge === 2 ? 128 / 255 : 1;
+    const numA = edge <= 2 ? 0 : edge === 3 ? 128 / 255 : 1;
+    const base = ctx.globalAlpha;
+    const pw = plate.width / 3;
+    ctx.globalAlpha = base * plateA;
+    ctx.drawImage(plate, frame * pw, 0, pw, plate.height, L.comboBalloon[0], L.comboBalloon[1], pw, plate.height);
+    if (numA > 0) {
+      ctx.globalAlpha = base * numA;
+      const ex = combo >= 1000;
+      const [nx, ny] = ex ? L.comboBalloonNumberEx : L.comboBalloonNumber;
+      const [dw, dh] = L.comboBalloonNumberSize;
+      const [ix, iy] = L.comboBalloonNumberInterval;
+      const digits = String(combo).split('').map(Number).reverse(); // least significant first
+      digits.forEach((d, j) => {
+        const n = digits.length;
+        ctx.drawImage(nums, dw * d, 0, dw, dh, nx - ix * (j - n), ny - iy * (j - n), dw, dh);
+      });
+      const [tx, ty] = ex ? L.comboBalloonTextEx : L.comboBalloonText;
+      const [rx, ry, rw, rh] = L.comboBalloonTextRect;
+      ctx.drawImage(nums, rx, ry, rw, rh, tx + 6 - frame * 3, ty, rw, rh);
+    }
+    ctx.globalAlpha = base;
+  }
+
+  private genreCache: { key: string; canvas: OffscreenCanvas } | null = null;
+
+  /** Genre plate under the title: the skin's 13_GENRE template tinted with the chosen colour, text centred. */
+  private drawGenre(ctx: Ctx2D): void {
+    const g = this.opts.genre;
+    if (!g || !g.text) return;
+    const L = this.skin.manifest.layout;
+    const u = this.height / 720;
+    const tpl = this.img('genreTemplate');
+    const [x, y] = L.genre;
+    // Template is 295x33 at 720p with the pill at 48..243 × 3..30.
+    const w = tpl ? tpl.width : 295 * u;
+    const h = tpl ? tpl.height : 33 * u;
+    const key = `${g.background}`;
+    if (!this.genreCache || this.genreCache.key !== key) {
+      const c = new OffscreenCanvas(Math.ceil(w), Math.ceil(h));
+      const cx = c.getContext('2d')!;
+      if (tpl) cx.drawImage(tpl, 0, 0);
+      else {
+        cx.beginPath();
+        cx.roundRect(48 * u, 3 * u, 195 * u, 27 * u, 13.5 * u);
+        cx.fillStyle = '#fff';
+        cx.fill();
+      }
+      cx.globalCompositeOperation = 'source-in';
+      cx.fillStyle = g.background;
+      cx.fillRect(0, 0, c.width, c.height);
+      this.genreCache = { key, canvas: c };
+    }
+    ctx.drawImage(this.genreCache.canvas, x, y);
+    const size = L.genreFontSize;
+    ctx.save();
+    ctx.font = `${size}px ${this.skin.fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    const maxW = (195 - 16) * (w / 295);
+    const mw = ctx.measureText(g.text).width;
+    ctx.translate(x + (145.5 / 295) * w, y + (16.5 / 33) * h);
+    if (mw > maxW) ctx.scale(maxW / mw, 1);
+    ctx.lineWidth = size / 4;
+    ctx.strokeStyle = '#000';
+    ctx.strokeText(g.text, 0, 0);
+    ctx.fillStyle = g.color;
+    ctx.fillText(g.text, 0, 0);
+    ctx.restore();
   }
 
   // ---------------------------------------------------------------- result animation

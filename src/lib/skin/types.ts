@@ -79,6 +79,10 @@ export const IMAGE_KEYS = [
   'gogoSplash',
   'loadingBackgroundWait',
   'loadingFade',
+  'scoreRank',
+  'comboBalloon',
+  'comboBalloonNumber',
+  'genreTemplate',
 ] as const;
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 
@@ -198,6 +202,24 @@ export interface SkinLayout {
    * ones tilt outwards.
    */
   gogoSplash: { frame: [number, number, number]; frameMs: number; x: number[]; y: number[]; rotate: boolean };
+  /** Score rank badge (粋/雅/極 sheet, 7 rows) centre. */
+  scoreRank: XY;
+  /**
+   * Combo balloon (every 50/100 combo): scroll plate (3 frames side by side),
+   * digit positions (<1000 / ≥1000), digit cell size and spacing, and the
+   * "コンボ!" label position and source rect in the number sheet.
+   */
+  comboBalloon: XY;
+  comboBalloonNumber: XY;
+  comboBalloonNumberEx: XY;
+  comboBalloonNumberSize: XY;
+  comboBalloonNumberInterval: XY;
+  comboBalloonText: XY;
+  comboBalloonTextEx: XY;
+  comboBalloonTextRect: [number, number, number, number];
+  /** Genre plate (top-left of the 13_GENRE template) and text size. */
+  genre: XY;
+  genreFontSize: number;
   /** Extra downward offset (720p px) of the loading title when the song has no subtitle (OpenTaiko: 15). */
   loadingTitleNoSubtitleOffset: number;
   /** How the loading screen gives way to play: crossfade, or split open like a curtain. */

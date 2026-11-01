@@ -70,6 +70,23 @@
   let introSec = $state(4.3);
   let endResult = $state<EndResult>('dondaFullCombo');
 
+  // Genre plate under the in-game title (colours remembered in localStorage)
+  const GENRE_KEY = 'tja2vid.genre';
+  const genreSaved = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(GENRE_KEY) ?? 'null');
+    } catch {
+      return null;
+    }
+  })();
+  let showGenre = $state<boolean>(genreSaved?.show ?? true);
+  let genreOverride = $state('');
+  let genreBg = $state<string>(genreSaved?.bg ?? '#ff8c00');
+  let genreColor = $state<string>(genreSaved?.color ?? '#ffffff');
+  $effect(() => {
+    localStorage.setItem(GENRE_KEY, JSON.stringify({ show: showGenre, bg: genreBg, color: genreColor }));
+  });
+
   // ---------------------------------------------------------------- busy modal
   // Long-running work registers a task; the newest one is shown in a modal that blocks the UI.
   let tasks = $state<(BusyState & { id: number })[]>([]);
@@ -200,6 +217,7 @@
     maxHitEffects,
     maxScoreAdds,
     endResult,
+    genre: showGenre ? { text: genreOverride || parsed?.meta.genre || '', background: genreBg, color: genreColor } : undefined,
     nameplate: showNameplate
       ? { name: npName }
       : undefined,
@@ -300,6 +318,7 @@
     tjaBytes = new Uint8Array(await f.arrayBuffer());
     titleOverride = '';
     subtitleOverride = '';
+    genreOverride = '';
     // If audio files were dropped together, pick the one named by WAVE:.
     if (pendingAudio.length) {
       const wave = parsed?.meta.wave.toLowerCase();
@@ -564,6 +583,18 @@
         <input type="checkbox" bind:checked={showDancer} disabled={!skin?.dancer} /> 댄서 표시
         {#if skin && !skin.dancer}<small class="hint">(이 스킨에는 댄서가 없음)</small>{/if}
       </label>
+
+      <h2>장르 표시</h2>
+      <label class="check"><input type="checkbox" bind:checked={showGenre} /> 제목 아래 장르 표시</label>
+      <label>
+        장르 텍스트
+        <input type="text" placeholder={parsed?.meta.genre || '예: アニメ'} bind:value={genreOverride} disabled={!showGenre} />
+      </label>
+      <div class="row">
+        <label class="inline">배경색 <input type="color" bind:value={genreBg} disabled={!showGenre} /></label>
+        <label class="inline">글자색 <input type="color" bind:value={genreColor} disabled={!showGenre} /></label>
+      </div>
+      {#if showGenre && !genreOverride && !parsed?.meta.genre}<p class="hint small">TJA에 GENRE가 없으면 텍스트를 입력해야 표시됩니다.</p>{/if}
 
       <h2>네임플레이트</h2>
       <label class="check">

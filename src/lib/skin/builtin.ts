@@ -112,6 +112,17 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingTransition: 'fade',
   loadingTitleNoSubtitleOffset: 0,
   nameplate: [12, 552],
+  scoreRank: [240, 352],
+  comboBalloon: [380, 20],
+  comboBalloonNumber: [342, 70],
+  comboBalloonNumberEx: [306, 70],
+  comboBalloonNumberSize: [80, 93],
+  comboBalloonNumberInterval: [68, 0],
+  comboBalloonText: [636, 104],
+  comboBalloonTextEx: [650, 104],
+  comboBalloonTextRect: [0, 186, 150, 46],
+  genre: [1478, 86],
+  genreFontSize: 26,
   nameplateScale: 1,
   nameplateOutline: true,
   gogoSplash: {
@@ -1033,6 +1044,76 @@ function gogoSplashSheet(): OffscreenCanvas {
 
 const easeOut = (x: number) => 1 - (1 - x) * (1 - x);
 
+// ------------------------------------------------------------------ score rank / combo balloon
+
+/** 7 score-rank badges (rows of 180px): bronze/silver/gold stars, then gems, then a rainbow crown. */
+function scoreRankSheet(): OffscreenCanvas {
+  const S = 130;
+  const [c, ctx] = canvas(S, S * 7);
+  const k = S / 180;
+  const fills = ['#e0a070', '#d8dde6', '#ffd25e', '#7cff8a', '#35c3ff', '#ff5fa2'];
+  const labels = ['C', 'B', 'A', 'S', 'SS', 'SSS', '★'];
+  for (let i = 0; i < 7; i++) {
+    const cx = S / 2;
+    const cy = i * S + S / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(k, k);
+    ctx.beginPath();
+    for (let j = 0; j < 16; j++) {
+      const r = j % 2 ? 58 : 78;
+      const a = (j / 16) * Math.PI * 2;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    if (i === 6) {
+      const g = ctx.createLinearGradient(-78, -78, 78, 78);
+      ['#ff5f5f', '#ffd25e', '#7cff8a', '#35c3ff', '#b98cff'].forEach((col, j) => g.addColorStop(j / 4, col));
+      ctx.fillStyle = g;
+    } else ctx.fillStyle = fills[i];
+    ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = COLOR.outline;
+    ctx.stroke();
+    ctx.restore();
+    text(ctx, labels[i], cx, cy + 3, (labels[i].length > 2 ? 44 : 60) * k, '#fff', COLOR.outline, 'center', 900);
+  }
+  return c;
+}
+
+/** Combo balloon plates: 3 frames (closed → opening → open) of 440x192. */
+function comboBalloonSheet(): OffscreenCanvas {
+  const [c, ctx] = canvas(440 * 3, 192);
+  const widths = [70, 300, 410];
+  widths.forEach((w, i) => {
+    ctx.save();
+    ctx.translate(i * 440 + 15, 20);
+    roundRect(ctx, 0, 0, w, 150, 28);
+    ctx.fillStyle = '#fffaf0';
+    ctx.fill();
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = COLOR.accent;
+    ctx.stroke();
+    ctx.restore();
+  });
+  return c;
+}
+
+/** Combo balloon digits (2 rows of 80x93) plus a "COMBO!" label at (0,186,150,46). */
+function comboBalloonNumbers(): OffscreenCanvas {
+  const [c, ctx] = canvas(800, 232);
+  for (let row = 0; row < 2; row++) {
+    for (let d = 0; d < 10; d++) {
+      const g = ctx.createLinearGradient(0, row * 93 + 6, 0, row * 93 + 88);
+      g.addColorStop(0, row ? '#d6f3ff' : '#fff1b8');
+      g.addColorStop(1, row ? COLOR.ka : '#ff8a3d');
+      text(ctx, String(d), d * 80 + 40, row * 93 + 48, 84, g, COLOR.outline, 'center', 900);
+    }
+  }
+  text(ctx, 'COMBO!', 75, 186 + 24, 34, COLOR.accent, COLOR.outline, 'center', 900);
+  return c;
+}
+
 // ------------------------------------------------------------------ rainbow gauge
 
 /** Rainbow overlay for a full gauge: 12 frames of hue-shifted cells (crossfaded by the renderer). */
@@ -1548,6 +1629,9 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       nameplate: nameplateSheet(),
       scoreAdd: digitsSheet(39, 51, () => '#ff9a3d', COLOR.outline),
       gogoSplash: gogoSplashSheet(),
+      scoreRank: scoreRankSheet(),
+      comboBalloon: comboBalloonSheet(),
+      comboBalloonNumber: comboBalloonNumbers(),
     };
     const layerSprites: Record<string, OffscreenCanvas> = {
       'gen:sky': sky(false),
