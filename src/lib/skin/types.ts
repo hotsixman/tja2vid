@@ -156,6 +156,9 @@ export interface SkinLayout {
   rollFrame: XY;
   rollFrameFrames: number;
   rollNumber: XY;
+  /** Digit scales (OpenTaiko Game_Balloon_Roll_Number_Scale / Game_Balloon_Balloon_Number_Scale). */
+  rollNumberScale: number;
+  balloonNumberScale: number;
   /** In-game song title: right edge and vertical centre. */
   title: XY;
   /** Titles wider than this are squeezed horizontally (OpenTaiko Game_MusicName_MaxWidth). */

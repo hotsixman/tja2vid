@@ -62,6 +62,8 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   rollFrame: [218, -3],
   rollFrameFrames: 5,
   rollNumber: [383, 209],
+  rollNumberScale: 1,
+  balloonNumberScale: 0.879,
   title: [1890, 63],
   titleMaxWidth: 990,
   titleFontSize: 54,
@@ -259,6 +261,8 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   rollFrame: [218, -3],
   rollFrameFrames: 5,
   rollNumber: [313, 122],
+  rollNumberScale: 1,
+  balloonNumberScale: 0.879,
   title: [1260, 42],
   titleMaxWidth: 660,
   titleFontSize: 36,
@@ -430,6 +434,10 @@ export function applyOpenTaikoIni(
   const gy = nums(game.Game_Genre_Y)[0];
   if (gx !== undefined || gy !== undefined) l.genre = [gx ?? l.genre[0], gy ?? l.genre[1]];
   l.genreFontSize = pt('Game_GenreText_FontSize') ?? l.genreFontSize;
+  const rns = nums(game.Game_Balloon_Roll_Number_Scale)[0];
+  if (rns !== undefined && rns > 0) l.rollNumberScale = rns;
+  const bns = nums(game.Game_Balloon_Balloon_Number_Scale)[0];
+  if (bns !== undefined && bns > 0) l.balloonNumberScale = bns;
   // In-game title: Game_MusicName_X/Y is the top-right corner.
   l.titleFontSize = pt('Game_MusicName_FontSize') ?? l.titleFontSize;
   const mw = nums(game.Game_MusicName_MaxWidth)[0];

@@ -9,6 +9,8 @@ export interface TimelineOptions {
   endMode: 'audio' | 'chart';
   /** Length of the song loading screen shown before play (0 = none). */
   introMs?: number;
+  /** Keep the video running at least this long after the last note (e.g. for the result animation). */
+  minTailMs?: number;
 }
 
 export interface Timeline {
@@ -29,9 +31,9 @@ export function computeTimeline(play: Playthrough, musicDurationMs: number | nul
   const startSong = playStart - introMs;
   const leadInMs = -startSong;
 
-  const chartEnd = play.lastTime + o.tailMs;
-  const endSong =
-    o.endMode === 'audio' && musicDurationMs !== null ? Math.max(musicDurationMs, play.lastTime + 1000) : chartEnd;
+  const minEnd = play.lastTime + Math.max(1000, o.minTailMs ?? 0);
+  const chartEnd = Math.max(play.lastTime + o.tailMs, minEnd);
+  const endSong = o.endMode === 'audio' && musicDurationMs !== null ? Math.max(musicDurationMs, minEnd) : chartEnd;
   return {
     leadInMs,
     durationMs: Math.max(1000, endSong + leadInMs),

@@ -120,6 +120,8 @@ const COUNT_KEYS = new Set<keyof SkinLayout>([
   'gogoFireFrames',
   'rollFrameFrames',
   'judgeRows',
+  'rollNumberScale',
+  'balloonNumberScale',
 ]);
 
 /** Default layout for a resolution: OpenTaiko's 1080p values, or its 720p defaults scaled. */

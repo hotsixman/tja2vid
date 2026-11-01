@@ -13,7 +13,7 @@
   import { clearDefaultSkin, loadDefaultSkinZip, saveDefaultSkin } from './lib/skin/storage';
   import { decodeAudio, mixSoundtrack } from './lib/audio/mix';
   import { computeTimeline } from './lib/timeline';
-  import { END_RESULTS, type EndResult } from './lib/endResult';
+  import { END_DELAY_MS, END_RESULTS, type EndResult } from './lib/endResult';
   import { exportVideo, isExportSupported, type FrameRate, type QualityName } from './lib/video/export';
 
   const SAMPLE_RATE = 48000;
@@ -206,6 +206,8 @@
           tailMs: 3000,
           endMode,
           introMs: showIntro ? Math.max(0.5, introSec) * 1000 : 0,
+          // Let the result animation play out and stay on screen.
+          minTailMs: endResult === 'none' ? 0 : END_DELAY_MS + 4000,
         })
       : { leadInMs: 0, durationMs: 1000 },
   );

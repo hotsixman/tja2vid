@@ -91,6 +91,8 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   rollFrame: [250, 20],
   rollFrameFrames: 5,
   rollNumber: [382, 196], // centre 470 (roll frame centre)
+  rollNumberScale: 1,
+  balloonNumberScale: 1,
   title: [1890, 52],
   titleMaxWidth: 960,
   titleFontSize: 52,

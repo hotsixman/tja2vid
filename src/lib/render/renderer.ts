@@ -273,6 +273,7 @@ export class TaikoRenderer implements FrameRenderer {
     bottomY: number,
     spacing: number,
     scaleY = 1,
+    scaleX = 1,
   ): void {
     const im = this.img(key);
     if (!im) return;
@@ -283,7 +284,7 @@ export class TaikoRenderer implements FrameRenderer {
     for (let i = 0; i < s.length; i++) {
       const d = s.charCodeAt(i) - 48;
       const cx = centerX - total / 2 + spacing * i;
-      ctx.drawImage(im, d * w, 0, w, h, cx - w / 2, bottomY - h * scaleY, w, h * scaleY);
+      ctx.drawImage(im, d * w, 0, w, h, cx - (w * scaleX) / 2, bottomY - h * scaleY, w * scaleX, h * scaleY);
     }
   }
 
@@ -1508,7 +1509,8 @@ export class TaikoRenderer implements FrameRenderer {
         const shake = Math.floor(t / 30) % 2 ? 3 : 0;
         this.draw(ctx, bk, L.balloon[0] + shake, L.balloon[1]);
         this.draw(ctx, 'balloon', L.balloonFrame[0], L.balloonFrame[1]);
-        this.drawDigits(ctx, 'rollNumber', remaining, this.counterCenter(L.balloonNumber[0]), L.balloonNumber[1], L.balloonNumberInterval[0]);
+        const bs = L.balloonNumberScale;
+        this.drawDigits(ctx, 'rollNumber', remaining, this.counterCenter(L.balloonNumber[0], bs), L.balloonNumber[1], L.balloonNumberInterval[0], bs, bs);
         continue;
       }
 
@@ -1528,7 +1530,8 @@ export class TaikoRenderer implements FrameRenderer {
       if (elapsed >= 120) {
         const sinceHit = t - (r.hitTimes[hitsSoFar - 1] ?? first);
         const pop = sinceHit < 60 ? 1 + 0.15 * (1 - sinceHit / 60) : 1;
-        this.drawDigits(ctx, 'rollNumber', hitsSoFar, this.counterCenter(L.rollNumber[0]), L.rollNumber[1], L.balloonNumberInterval[0], pop);
+        const rs = L.rollNumberScale;
+        this.drawDigits(ctx, 'rollNumber', hitsSoFar, this.counterCenter(L.rollNumber[0], rs), L.rollNumber[1], L.balloonNumberInterval[0], rs * pop, rs);
       }
       ctx.globalAlpha = 1;
     }
@@ -1539,9 +1542,9 @@ export class TaikoRenderer implements FrameRenderer {
    * numX − interval·(j − n/2), which centres every digit group on
    * numX + (interval + glyph width) / 2 whatever the digit count.
    */
-  private counterCenter(numX: number): number {
+  private counterCenter(numX: number, scale = 1): number {
     const im = this.img('rollNumber');
-    const w = im ? im.width / 10 : 0;
+    const w = im ? (im.width / 10) * scale : 0;
     return numX + (this.skin.manifest.layout.balloonNumberInterval[0] + w) / 2;
   }
 
