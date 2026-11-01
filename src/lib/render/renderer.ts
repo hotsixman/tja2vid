@@ -568,10 +568,9 @@ export class TaikoRenderer implements FrameRenderer {
    * of the screen; D = its length, i.e. when the curtain starts):
    *   0–250    characters fade in while sliding in diagonally from the top corners
    *   184–317  plate and sparkle background (Bg_Wait) fade in
-   *   700      title/subtitle appear; characters settle 6px right / 13px down
+   *   700      title/subtitle appear
    *   D−317    title disappears
    *   D−300…−167  plate and sparkles fade out
-   *   D−300…−250  characters dip 13px (ease-out) and hold
    *   D−234…      characters rise, accelerating (0.716τ + 0.00312τ² px, τ in ms),
    *               fading out over D−150…−80, leaving the plain background
    * Timings are compressed proportionally for screens shorter than the arcade's.
@@ -600,16 +599,14 @@ export class TaikoRenderer implements FrameRenderer {
     const chara = this.img('loadingChara');
     const charaA = ramp(0, 250) * (curtain ? 1 - ramp(end - 150, 70) : 1);
     if (chara && charaA > 0) {
-      // Diagonal slide-in (ease-out), then a small settle when the title appears.
+      // Diagonal slide-in (ease-out) to the final position.
       const slide = 200 * Math.pow(1 - ramp(0, 317), 1.2);
-      const settled = e >= 700;
-      const dx = (-slide - (settled ? 0 : 6)) * u;
-      let dy = (-slide - (settled ? 0 : 13)) * u;
+      const dx = -slide * u;
+      let dy = -slide * u;
       if (curtain && e >= end - 300) {
-        // Exit: a small dip, then an accelerating rise while fading out.
-        const dip = 13 * easeOutCubic((e - (end - 300)) / 50);
+        // Exit: an accelerating rise while fading out.
         const tau = Math.max(0, e - (end - 234));
-        dy += (dip - (0.716 * tau + 0.00312 * tau * tau)) * u;
+        dy -= (0.716 * tau + 0.00312 * tau * tau) * u;
       }
       const half = chara.width / 2;
       const sx = this.width / chara.width;
