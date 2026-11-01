@@ -74,6 +74,7 @@ export const IMAGE_KEYS = [
   'loadingBackground',
   'loadingChara',
   'loadingPlate',
+  'nameplate',
 ] as const;
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 
@@ -166,6 +167,12 @@ export interface SkinLayout {
   loadingTitleStroke: string;
   loadingSubtitleColor: string;
   loadingSubtitleStroke: string;
+  /**
+   * Nameplate position (top-left of the "1P" badge). The NamePlate sheet has 12
+   * equal rows (54px at 720p): 1P/1P/2P badges, plate, outline, gold/purple
+   * title strips, dan plate, silver/gold/rainbow dan medals, gold bar.
+   */
+  nameplate: XY;
   /** How the loading screen gives way to play: crossfade, or split open like a curtain. */
   loadingTransition: 'fade' | 'curtain';
 }

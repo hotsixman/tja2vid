@@ -77,6 +77,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   loadingTitleStroke: '#000000',
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
+  nameplate: [0, 450],
   loadingTransition: 'curtain',
 };
 
@@ -155,6 +156,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     loadingBackground: 'Graphics/4_SongLoading/Bg.png',
     loadingChara: 'Graphics/4_SongLoading/Chara.png',
     loadingPlate: 'Graphics/4_SongLoading/Plate.png',
+    nameplate: 'Graphics/NamePlate.png',
   },
   sounds: {
     don: 'Sounds/Taiko/dong.ogg',
@@ -233,6 +235,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   loadingTitleStroke: '#000000',
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
+  nameplate: [-5, 297],
   loadingTransition: 'curtain',
 };
 
@@ -269,6 +272,7 @@ const INI_PAIRS: [keyof SkinLayout, string, string?][] = [
   ['rollFrame', 'Game_Balloon_Roll_Frame_X', 'Game_Balloon_Roll_Frame_Y'],
   ['rollNumber', 'Game_Balloon_Roll_Number_X', 'Game_Balloon_Roll_Number_Y'],
   ['loadingPlate', 'SongLoading_Plate_X', 'SongLoading_Plate_Y'],
+  ['nameplate', 'Game_Taiko_NamePlate_X', 'Game_Taiko_NamePlate_Y'],
   ['loadingTitle', 'SongLoading_Title_X', 'SongLoading_Title_Y'],
   ['loadingSubtitle', 'SongLoading_SubTitle_X', 'SongLoading_SubTitle_Y'],
 ];

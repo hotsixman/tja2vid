@@ -107,6 +107,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingSubtitleColor: '#ffd2ec',
   loadingSubtitleStroke: '#15121f',
   loadingTransition: 'fade',
+  nameplate: [12, 552],
 };
 
 const BACKGROUND: BackgroundSpec = {
@@ -973,6 +974,85 @@ function loadingChara(): OffscreenCanvas {
   return c;
 }
 
+// ------------------------------------------------------------------ nameplate
+
+/** Nameplate sheet in the standard 12-row layout (rows of 81px = 54px × 1.5). */
+function nameplateSheet(): OffscreenCanvas {
+  const k = 1.5;
+  const R = 54 * k;
+  const [c, ctx] = canvas(220 * k, R * 12);
+  const at = (row: number, fn: () => void) => {
+    ctx.save();
+    ctx.translate(0, row * R);
+    ctx.scale(k, k);
+    fn();
+    ctx.restore();
+  };
+  const badge = (row: number, color: string, label: string) =>
+    at(row, () => {
+      circle(ctx, 27, 27, 23, COLOR.outline);
+      circle(ctx, 27, 27, 20, color);
+      text(ctx, label, 27, 28, 18, '#fff', COLOR.outline, 'center', 900);
+    });
+  badge(0, COLOR.don, '1P');
+  badge(1, COLOR.ka, '1P');
+  badge(2, COLOR.ka, '2P');
+  at(3, () => {
+    roundRect(ctx, 2, 2, 216, 50, 25);
+    ctx.fillStyle = '#fffaf2';
+    ctx.fill();
+  });
+  at(4, () => {
+    roundRect(ctx, 2, 2, 216, 50, 25);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = COLOR.outline;
+    ctx.stroke();
+  });
+  const strip = (row: number, a: string, b: string) =>
+    at(row, () => {
+      ctx.save();
+      roundRect(ctx, 2, 2, 216, 50, 25);
+      ctx.clip();
+      const g = ctx.createLinearGradient(0, 0, 220, 0);
+      g.addColorStop(0, a);
+      g.addColorStop(0.5, '#fff');
+      g.addColorStop(1, a);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 220, 28);
+      ctx.fillStyle = b;
+      ctx.fillRect(0, 26, 220, 2);
+      ctx.restore();
+    });
+  strip(5, COLOR.gold, '#b67c00');
+  strip(6, '#b98cff', '#5a2a9a');
+  at(7, () => {
+    roundRect(ctx, 8, 28, 82, 20, 8);
+    ctx.fillStyle = COLOR.outline;
+    ctx.fill();
+  });
+  const medal = (row: number, fill: string | ((g: C2D) => CanvasGradient)) =>
+    at(row, () => {
+      ctx.save();
+      roundRect(ctx, 8, 28, 82, 20, 8);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = typeof fill === 'string' ? fill : fill(ctx);
+      ctx.stroke();
+      ctx.restore();
+    });
+  medal(8, '#c8d0dc');
+  medal(9, COLOR.gold);
+  medal(10, (g) => {
+    const gr = g.createLinearGradient(8, 0, 90, 0);
+    ['#ff5f5f', '#ffd25e', '#7cff8a', '#35c3ff', '#b98cff'].forEach((col, i) => gr.addColorStop(i / 4, col));
+    return gr;
+  });
+  at(11, () => {
+    ctx.fillStyle = COLOR.gold;
+    ctx.fillRect(30, 46, 40, 3);
+  });
+  return c;
+}
+
 // ------------------------------------------------------------------ character
 
 /** "Hoshi", the built-in mascot: a star-shaped drummer. Pose is a function of the frame phase. */
@@ -1341,6 +1421,7 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       loadingBackground: loadingBackground(),
       loadingPlate: loadingPlate(),
       loadingChara: loadingChara(),
+      nameplate: nameplateSheet(),
     };
     const layerSprites: Record<string, OffscreenCanvas> = {
       'gen:sky': sky(false),

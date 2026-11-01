@@ -9,6 +9,8 @@ export interface RenderOptions {
   showTitle: boolean;
   /** Draw the skin's dancers (if it has any). Defaults to true. */
   showDancer?: boolean;
+  /** Player nameplate; omitted = not drawn. */
+  nameplate?: NameplateInfo;
   /** Max judgement texts on screen at once (newest kept). Defaults to 1. */
   maxJudgeTexts?: number;
   /** Max hit explosions on screen at once (newest kept). Defaults to 2. */
@@ -22,6 +24,18 @@ export interface RenderOptions {
   intro?: { start: number; end: number };
   title: string;
   subtitle: string;
+}
+
+export interface NameplateInfo {
+  name: string;
+  /** 称号 shown on the title strip. */
+  title: string;
+  /** 段位 shown on the dark plate (empty = none). */
+  dan: string;
+  /** Title strip colour: 0 none, 1 gold, 2 purple. */
+  titleType: 0 | 1 | 2;
+  /** Dan medal: 0 none, 1 silver, 2 gold, 3 rainbow. */
+  danMedal: 0 | 1 | 2 | 3;
 }
 
 /** Anything that can draw one frame of the play at a given song time. */
@@ -911,6 +925,7 @@ export class TaikoRenderer implements FrameRenderer {
   private drawTaikoPanel(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
     this.draw(ctx, 'taikoBackground', L.taikoBackground[0], L.taikoBackground[1]);
+    this.drawNameplate(ctx); // under the drum
 
     // Drum + per-side flashes.
     const [tx, ty] = L.taiko;
@@ -990,6 +1005,57 @@ export class TaikoRenderer implements FrameRenderer {
           ctx.drawImage(im, d * dw, 0, dw, dh, x - (dw * scaleX) / 2, cy - dh * pop, dw * scaleX, dh * pop);
         }
       }
+    }
+  }
+
+  /** Player nameplate from the 12-row NamePlate sheet (see SkinLayout.nameplate), plus text. */
+  private drawNameplate(ctx: Ctx2D): void {
+    const info = this.opts.nameplate;
+    const im = this.img('nameplate');
+    if (!info || !im) return;
+    const rowH = im.height / 12;
+    const k = rowH / 54; // sheet is authored with 54px rows at 720p
+    const w = im.width;
+    const [x, y] = this.skin.manifest.layout.nameplate;
+    const px = x + 38 * k; // plate starts right of the badge's centre
+    const row = (r: number, dx = px) => ctx.drawImage(im, 0, r * rowH, w, rowH, dx, y, w, rowH);
+
+    row(3); // plate
+    if (info.title && info.titleType) row(4 + info.titleType); // 5 gold, 6 purple
+    if (info.dan) {
+      row(7); // dan plate
+      if (info.danMedal) row(7 + info.danMedal); // 8 silver, 9 gold, 10 rainbow
+    }
+    row(4); // outline
+    ctx.drawImage(im, 0, 0, rowH, rowH, x, y, rowH, rowH); // "1P" badge
+
+    const font = this.skin.fontFamily;
+    const text = (s: string, cx: number, cy: number, size: number, maxW: number, fill: string, stroke = '') => {
+      if (!s) return;
+      ctx.save();
+      ctx.font = `${size}px ${font}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      const mw = ctx.measureText(s).width;
+      ctx.translate(cx, cy);
+      if (mw > maxW) ctx.scale(maxW / mw, 1);
+      if (stroke) {
+        ctx.lineWidth = size / 4;
+        ctx.strokeStyle = stroke;
+        ctx.strokeText(s, 0, 0);
+      }
+      ctx.fillStyle = fill;
+      ctx.fillText(s, 0, 0);
+      ctx.restore();
+    };
+    text(info.title, px + 110 * k, y + 15 * k, 15 * k, 190 * k, info.titleType ? '#000' : '#333');
+    if (info.dan) {
+      // Left part of the dan plate (the medal sits on its right part).
+      text(info.dan, px + 30 * k, y + 38 * k, 15 * k, 44 * k, '#fff', info.danMedal ? '#000' : '');
+      text(info.name, px + 152 * k, y + 38 * k, 19 * k, 112 * k, '#000');
+    } else {
+      text(info.name, px + 110 * k, y + 38 * k, 19 * k, 190 * k, '#000');
     }
   }
 
