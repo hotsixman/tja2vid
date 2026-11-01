@@ -105,6 +105,8 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingSubtitle: [960, 590],
   loadingTitleFontSize: 68,
   loadingTitleMaxWidth: 1500,
+  loadingTitleOutline: 0,
+  loadingTitleLetterSpacing: 0,
   loadingSubtitleMaxWidth: 1500,
   loadingSubtitleFontSize: 36,
   loadingCharaMove: [0, 140],

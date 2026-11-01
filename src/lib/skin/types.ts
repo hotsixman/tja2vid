@@ -175,6 +175,10 @@ export interface SkinLayout {
   loadingTitle: XY;
   loadingSubtitle: XY;
   loadingTitleFontSize: number;
+  /** Loading title outline width outside the glyph, 720p px (0 = font size / 10). */
+  loadingTitleOutline: number;
+  /** Extra spacing between loading-title letters, 720p px (negative = tighter). */
+  loadingTitleLetterSpacing: number;
   /** Loading title / subtitle wider than these are squeezed horizontally (SongLoading_*_MaxSize). */
   loadingTitleMaxWidth: number;
   loadingSubtitleMaxWidth: number;

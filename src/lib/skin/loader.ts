@@ -123,6 +123,8 @@ const COUNT_KEYS = new Set<keyof SkinLayout>([
   'rollNumberScale',
   'balloonNumberScale',
   'balloonDigitInterval',
+  'loadingTitleOutline',
+  'loadingTitleLetterSpacing',
 ]);
 
 /** Default layout for a resolution: OpenTaiko's 1080p values, or its 720p defaults scaled. */

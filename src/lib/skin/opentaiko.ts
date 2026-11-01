@@ -76,6 +76,8 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   loadingSubtitle: [960, 488],
   loadingTitleFontSize: 62,
   loadingTitleMaxWidth: 1065,
+  loadingTitleOutline: 0,
+  loadingTitleLetterSpacing: 0,
   loadingSubtitleMaxWidth: 1065,
   loadingSubtitleFontSize: 40,
   loadingCharaMove: [375, -120],
@@ -276,6 +278,8 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   loadingSubtitle: [640, 325],
   loadingTitleFontSize: 41,
   loadingTitleMaxWidth: 710,
+  loadingTitleOutline: 0,
+  loadingTitleLetterSpacing: 0,
   loadingSubtitleMaxWidth: 710,
   loadingSubtitleFontSize: 27,
   loadingCharaMove: [250, -80],
@@ -481,6 +485,10 @@ export function applyOpenTaikoIni(
     y: gsy.length ? gsy : l.gogoSplash.y,
     rotate: game.Game_Effect_GoGoSplash_Rotate !== undefined ? /^(1|true)$/i.test(game.Game_Effect_GoGoSplash_Rotate.trim()) : l.gogoSplash.rotate,
   };
+  const tls = nums(game.SongLoading_Title_LetterSpacing)[0];
+  if (tls !== undefined) l.loadingTitleLetterSpacing = tls;
+  const lto = nums(game.SongLoading_Title_OutlineWidth)[0];
+  if (lto !== undefined && lto >= 0) l.loadingTitleOutline = lto;
   const nso = nums(game.SongLoading_Title_NoSubtitle_Offset)[0];
   if (nso !== undefined) l.loadingTitleNoSubtitleOffset = nso;
   // tja2vid extension: SongLoading_Transition=fade|curtain

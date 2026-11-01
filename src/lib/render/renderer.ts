@@ -567,13 +567,14 @@ export class TaikoRenderer implements FrameRenderer {
   /**
    * Song loading screen, timed from Nijiiro arcade footage (ms from the start
    * of the screen; D = its length, i.e. when the curtain starts):
-   *   0–250    characters fade in while sliding in diagonally from the top corners
-   *   184–317  plate and sparkle background (Bg_Wait) fade in
-   *   700      title/subtitle appear
-   *   D−317    title disappears
-   *   D−300…−167  plate and sparkles fade out
-   *   D−234…      characters rise, accelerating (0.716τ + 0.00312τ² px, τ in ms),
-   *               fading out over D−150…−80, leaving the plain background
+   *   166–333  characters arc in from the top corners (720p offsets: x −101·(1−p)^1.4,
+   *            y −83·(1−p^1.5)), fading in (ease-out) over 150–250
+   *   233–333  plate and sparkle background (Bg_Wait) fade in
+   *   333      title/subtitle appear (no fade)
+   *   D−308    title disappears; plate and sparkles fade out until D−192
+   *   D−317…−250  characters dip 13px (ease-out)
+   *   D−232…      characters rise, accelerating (0.71τ + 0.0032τ² px, τ in ms),
+   *               fading out over D−112…−75, leaving the plain background
    * Timings are compressed proportionally for screens shorter than the arcade's.
    */
   private drawLoading(ctx: Ctx2D, t: number): void {
@@ -590,7 +591,7 @@ export class TaikoRenderer implements FrameRenderer {
 
     this.drawLoadingBackground(ctx, 0, this.width);
 
-    const waitIn = ramp(184, 133) * (curtain ? 1 - ramp(end - 300, 133) : 1);
+    const waitIn = ramp(233, 100) * (curtain ? 1 - ramp(end - 317, 125) : 1);
     const wait = this.img('loadingBackgroundWait');
     if (wait && waitIn > 0) {
       ctx.globalAlpha = base * waitIn;
@@ -598,16 +599,18 @@ export class TaikoRenderer implements FrameRenderer {
     }
 
     const chara = this.img('loadingChara');
-    const charaA = ramp(0, 250) * (curtain ? 1 - ramp(end - 150, 70) : 1);
+    const fadeIn = ramp(150, 100);
+    const charaA = (1 - (1 - fadeIn) ** 2) * (curtain ? 1 - ramp(end - 112, 37) : 1);
     if (chara && charaA > 0) {
-      // Diagonal slide-in (ease-out) to the final position.
-      const slide = 200 * Math.pow(1 - ramp(0, 317), 1.2);
-      const dx = -slide * u;
-      let dy = -slide * u;
-      if (curtain && e >= end - 300) {
-        // Exit: an accelerating rise while fading out.
-        const tau = Math.max(0, e - (end - 234));
-        dy -= (0.716 * tau + 0.00312 * tau * tau) * u;
+      // Arc in: x eases out, y eases in.
+      const p = ramp(166, 167);
+      const dx = -101 * Math.pow(1 - p, 1.4) * u;
+      let dy = -83 * (1 - Math.pow(p, 1.5)) * u;
+      if (curtain && e >= end - 317) {
+        // Exit: a small dip, then an accelerating rise while fading out.
+        const dip = 13 * easeOutCubic((e - (end - 317)) / 67);
+        const tau = Math.max(0, e - (end - 232));
+        dy += (dip - (0.71 * tau + 0.0032 * tau * tau)) * u;
       }
       const half = chara.width / 2;
       const sx = this.width / chara.width;
@@ -617,14 +620,14 @@ export class TaikoRenderer implements FrameRenderer {
       ctx.drawImage(chara, half, 0, half, chara.height, half * sx - dx, dy, half * sx, chara.height * sy);
     }
 
-    const plateA = ramp(184, 133) * (curtain ? 1 - ramp(end - 300, 133) : 1);
+    const plateA = ramp(233, 100) * (curtain ? 1 - ramp(end - 317, 125) : 1);
     const plate = this.img('loadingPlate');
     if (plate && plateA > 0) {
       ctx.globalAlpha = base * plateA;
       ctx.drawImage(plate, L.loadingPlate[0] - plate.width / 2, L.loadingPlate[1] - plate.height / 2);
     }
 
-    const showText = e >= 700 && (!curtain || e < end - 317);
+    const showText = e >= 333 && (!curtain || e < end - 308);
     if (showText) {
       ctx.globalAlpha = base;
       const noSub = this.opts.subtitle ? 0 : L.loadingTitleNoSubtitleOffset * u;
@@ -636,6 +639,8 @@ export class TaikoRenderer implements FrameRenderer {
         L.loadingTitleColor,
         L.loadingTitleStroke,
         L.loadingTitleMaxWidth,
+        L.loadingTitleOutline > 0 ? L.loadingTitleOutline * 2 * u : undefined,
+        L.loadingTitleLetterSpacing * u,
       );
       this.drawCenteredText(
         ctx,
@@ -716,10 +721,13 @@ export class TaikoRenderer implements FrameRenderer {
     fill: string,
     stroke: string,
     maxW = this.width * 0.8,
+    strokeWidth = size / 5,
+    letterSpacing = 0,
   ) {
     if (!text) return;
     ctx.save();
     ctx.font = `${size}px ${this.skin.fontFamily}`;
+    if (letterSpacing && 'letterSpacing' in ctx) (ctx as unknown as { letterSpacing: string }).letterSpacing = `${letterSpacing}px`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
@@ -727,7 +735,7 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.translate(x, y);
     if (w > maxW) ctx.scale(maxW / w, 1);
     if (stroke) {
-      ctx.lineWidth = size / 5;
+      ctx.lineWidth = strokeWidth;
       ctx.strokeStyle = stroke;
       ctx.strokeText(text, 0, 0);
     }
