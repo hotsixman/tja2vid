@@ -1120,6 +1120,13 @@ export class TaikoRenderer implements FrameRenderer {
     const half = im.width / 2;
     ctx.drawImage(im, 0, 0, half, im.height, lx, y, half * s, h);
     ctx.drawImage(im, half, 0, half, im.height, rx + half * s, y, half * s, h);
+    // At the top of a hop the image can end above the screen bottom; extend
+    // its last row down so the crowd never floats over a gap.
+    const gap = this.height - (y + h);
+    if (gap > 0) {
+      ctx.drawImage(im, 0, im.height - 1, half, 1, lx, y + h - 0.5, half * s, gap + 1);
+      ctx.drawImage(im, half, im.height - 1, half, 1, rx + half * s, y + h - 0.5, half * s, gap + 1);
+    }
   }
 
   /** OpenTaiko dancers: one motion cycle every `beat` beats, shown once the gauge reaches their threshold. */
