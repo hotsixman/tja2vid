@@ -132,6 +132,15 @@ export function defaultLayoutFor([w]: [number, number]): SkinLayout {
       if (COUNT_KEYS.has(key as keyof SkinLayout)) continue;
       if (Array.isArray(v)) out[key] = v.map((n: number) => Math.round(n * k));
       else if (typeof v === 'number') out[key] = Math.round(v * k);
+      else if (key === 'gogoSplash') {
+        const g = v as SkinLayout['gogoSplash'];
+        out[key] = {
+          ...g,
+          frame: [Math.round(g.frame[0] * k), Math.round(g.frame[1] * k), g.frame[2]],
+          x: g.x.map((n) => Math.round(n * k)),
+          y: g.y.map((n) => Math.round(n * k)),
+        };
+      }
     }
     // gaugeCells / frame counts stay as-is; notesFlash's 3rd value is a frame count.
     (out.notesFlash as number[])[2] = OPENTAIKO_720_LAYOUT.notesFlash[2];

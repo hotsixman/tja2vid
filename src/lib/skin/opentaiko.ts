@@ -72,6 +72,8 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   loadingTitle: [960, 420],
   loadingSubtitle: [960, 488],
   loadingTitleFontSize: 62,
+  loadingTitleMaxWidth: 1065,
+  loadingSubtitleMaxWidth: 1065,
   loadingSubtitleFontSize: 40,
   loadingCharaMove: [375, -120],
   loadingTitleColor: '#ffffff',
@@ -79,8 +81,17 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
   nameplate: [0, 450],
+  gogoSplash: {
+    frame: [345, 690, 31],
+    frameMs: 15,
+    x: [120, 450, 780, 1140, 1470, 1740],
+    y: [1100, 1090, 1080, 1080, 1090, 1100],
+    rotate: true,
+  },
   nameplateScale: 1,
   nameplateBadgeScale: 1,
+  nameplateScaleY: 0,
+  nameplateOutline: true,
   nameplatePlateOffset: 38,
   scoreAdd: [27, 279],
   loadingTransition: 'curtain',
@@ -163,6 +174,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     loadingPlate: 'Graphics/4_SongLoading/Plate.png',
     nameplate: 'Graphics/NamePlate.png',
     scoreAdd: `${G}/6_Taiko/Score_1P.png`,
+    gogoSplash: `${G}/10_Effects/GoGoSplash.png`,
   },
   sounds: {
     don: 'Sounds/Taiko/dong.ogg',
@@ -237,6 +249,8 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   loadingTitle: [640, 280],
   loadingSubtitle: [640, 325],
   loadingTitleFontSize: 41,
+  loadingTitleMaxWidth: 710,
+  loadingSubtitleMaxWidth: 710,
   loadingSubtitleFontSize: 27,
   loadingCharaMove: [250, -80],
   loadingTitleColor: '#ffffff',
@@ -244,8 +258,17 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
   nameplate: [-5, 297],
+  gogoSplash: {
+    frame: [230, 460, 31],
+    frameMs: 15,
+    x: [80, 300, 520, 760, 980, 1160],
+    y: [740, 730, 720, 720, 730, 740],
+    rotate: true,
+  },
   nameplateScale: 1,
   nameplateBadgeScale: 1,
+  nameplateScaleY: 0,
+  nameplateOutline: true,
   nameplatePlateOffset: 38,
   scoreAdd: [20, 186],
   loadingTransition: 'curtain',
@@ -389,6 +412,24 @@ export function applyOpenTaikoIni(
   if (nps !== undefined && nps > 0) l.nameplateScale = nps;
   const npb = nums(game.Game_Taiko_NamePlate_BadgeScale)[0];
   if (npb !== undefined && npb > 0) l.nameplateBadgeScale = npb;
+  const npy = nums(game.Game_Taiko_NamePlate_ScaleY)[0];
+  if (npy !== undefined && npy > 0) l.nameplateScaleY = npy;
+  if (game.Game_Taiko_NamePlate_Outline !== undefined) l.nameplateOutline = /^(1|true)$/i.test(game.Game_Taiko_NamePlate_Outline.trim());
+  const tmw = nums(game.SongLoading_Title_MaxSize)[0];
+  if (tmw !== undefined && tmw > 0) l.loadingTitleMaxWidth = tmw;
+  const smw = nums(game.SongLoading_SubTitle_MaxSize)[0];
+  if (smw !== undefined && smw > 0) l.loadingSubtitleMaxWidth = smw;
+  const gs = nums(game.Game_Effect_GoGoSplash);
+  const gsx = nums(game.Game_Effect_GoGoSplash_X);
+  const gsy = nums(game.Game_Effect_GoGoSplash_Y);
+  const gst = nums(game.Game_Effect_GoGoSplash_Timer)[0];
+  l.gogoSplash = {
+    frame: gs.length >= 3 ? [gs[0], gs[1], gs[2]] : l.gogoSplash.frame,
+    frameMs: gst ?? l.gogoSplash.frameMs,
+    x: gsx.length ? gsx : l.gogoSplash.x,
+    y: gsy.length ? gsy : l.gogoSplash.y,
+    rotate: game.Game_Effect_GoGoSplash_Rotate !== undefined ? /^(1|true)$/i.test(game.Game_Effect_GoGoSplash_Rotate.trim()) : l.gogoSplash.rotate,
+  };
   const npo = nums(game.Game_Taiko_NamePlate_PlateOffset)[0];
   if (npo !== undefined) l.nameplatePlateOffset = npo;
   // tja2vid extension: SongLoading_Transition=fade|curtain

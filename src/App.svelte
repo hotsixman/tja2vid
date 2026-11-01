@@ -68,6 +68,7 @@
   });
   let maxJudgeTexts = $state(2);
   let maxHitEffects = $state(1);
+  let maxScoreAdds = $state(10);
   let showIntro = $state(true);
   let introSec = $state(3);
 
@@ -199,6 +200,7 @@
     showCharacter,
     maxJudgeTexts,
     maxHitEffects,
+    maxScoreAdds,
     nameplate: showNameplate
       ? { name: npName, title: npTitle, dan: npDan, titleType: npTitleType, danMedal: npDanMedal }
       : undefined,
@@ -492,6 +494,10 @@
         <label>
           타격 이펙트 최대 개수
           <input type="number" min="1" max="10" step="1" bind:value={maxHitEffects} />
+        </label>
+        <label>
+          점수 추가 표시 최대 개수
+          <input type="number" min="1" max="20" step="1" bind:value={maxScoreAdds} />
         </label>
         <label>
           시작 전 여유 (초)

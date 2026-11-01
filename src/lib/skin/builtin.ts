@@ -101,6 +101,8 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingTitle: [960, 512],
   loadingSubtitle: [960, 590],
   loadingTitleFontSize: 68,
+  loadingTitleMaxWidth: 1500,
+  loadingSubtitleMaxWidth: 1500,
   loadingSubtitleFontSize: 36,
   loadingCharaMove: [0, 140],
   loadingTitleColor: '#ffffff',
@@ -111,6 +113,15 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   nameplate: [12, 552],
   nameplateScale: 1,
   nameplateBadgeScale: 1,
+  nameplateScaleY: 0,
+  nameplateOutline: true,
+  gogoSplash: {
+    frame: [345, 690, 31],
+    frameMs: 15,
+    x: [120, 450, 780, 1140, 1470, 1740],
+    y: [1100, 1090, 1080, 1080, 1090, 1100],
+    rotate: true,
+  },
   nameplatePlateOffset: 38,
   scoreAdd: [24, 440],
 };
@@ -979,6 +990,51 @@ function loadingChara(): OffscreenCanvas {
   return c;
 }
 
+// ------------------------------------------------------------------ gogo splash
+
+/** GoGo-start firework: a rocket rises from the bottom and bursts (31 frames of 345x690). */
+function gogoSplashSheet(): OffscreenCanvas {
+  const FW = 345;
+  const FH = 690;
+  const N = 31;
+  const cols = ['#ffd25e', '#ff5fa2', '#35c3ff', '#7cff8a', '#ffffff'];
+  return frames(N, FW, FH, 1, (ctx, i) => {
+    const p = i / (N - 1);
+    const cx = FW / 2;
+    const rise = Math.min(1, p / 0.45);
+    const headY = FH - 20 - easeOut(rise) * 470;
+    // rising streak
+    if (p < 0.55) {
+      const g = ctx.createLinearGradient(cx, FH, cx, headY);
+      g.addColorStop(0, 'rgba(255,200,90,0)');
+      g.addColorStop(1, `rgba(255,240,180,${1 - Math.max(0, (p - 0.4) / 0.15)})`);
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx, FH);
+      ctx.lineTo(cx, headY);
+      ctx.stroke();
+    }
+    // burst
+    if (p >= 0.4) {
+      const q = (p - 0.4) / 0.6;
+      const r = 30 + easeOut(q) * 140;
+      ring(ctx, cx, headY, r * 0.8, 6 * (1 - q) + 1, '#fff3c0', 1 - q);
+      for (let k = 0; k < 18; k++) {
+        const a = (k / 18) * Math.PI * 2;
+        const sx = cx + Math.cos(a) * r;
+        const sy = headY + Math.sin(a) * r + q * q * 40;
+        ctx.globalAlpha = Math.max(0, 1 - q);
+        circle(ctx, sx, sy, 7 * (1 - q) + 2, cols[k % cols.length]);
+      }
+      ctx.globalAlpha = 1;
+    }
+  });
+}
+
+const easeOut = (x: number) => 1 - (1 - x) * (1 - x);
+
 // ------------------------------------------------------------------ rainbow gauge
 
 /** Rainbow overlay for a full gauge: 12 frames of hue-shifted cells (crossfaded by the renderer). */
@@ -1450,6 +1506,7 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       loadingChara: loadingChara(),
       nameplate: nameplateSheet(),
       scoreAdd: digitsSheet(39, 51, () => '#ff9a3d', COLOR.outline),
+      gogoSplash: gogoSplashSheet(),
     };
     const layerSprites: Record<string, OffscreenCanvas> = {
       'gen:sky': sky(false),

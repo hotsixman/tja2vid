@@ -13,6 +13,8 @@ export interface RenderOptions {
   nameplate?: NameplateInfo;
   /** Max judgement texts on screen at once (newest kept). Defaults to 2. */
   maxJudgeTexts?: number;
+  /** Max "+score" popups on screen at once (newest kept). Defaults to 10, like OpenTaiko. */
+  maxScoreAdds?: number;
   /** Max hit explosions on screen at once (newest kept). Defaults to 1. */
   maxHitEffects?: number;
   /** Draw the skin's character (if it has one). Defaults to true. */
@@ -320,6 +322,7 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawHitEffect(ctx, t);
     this.drawNotes(ctx, t);
     this.drawTaikoPanel(ctx, t);
+    this.drawGogoSplash(ctx, t);
     this.drawGauge(ctx, t);
     // Above the lane and gauge (the balloon pose overlaps the lane), below the counters.
     if (this.opts.showCharacter !== false) this.drawCharacter(ctx, t);
@@ -377,7 +380,17 @@ export class TaikoRenderer implements FrameRenderer {
     const textAlpha = ramp(350 * k, 300 * k) * (curtain ? 1 - ramp(D - 800 * k, 200 * k) : 1);
     if (textAlpha > 0) {
       ctx.globalAlpha = base * textAlpha;
-      this.drawCenteredText(ctx, this.opts.title, L.loadingTitle, L.loadingTitleFontSize, L.loadingTitleColor, L.loadingTitleStroke);
+      // Like OpenTaiko: without a subtitle the title moves down 15px (720p).
+      const noSub = this.opts.subtitle ? 0 : 15 * (this.height / 720);
+      this.drawCenteredText(
+        ctx,
+        this.opts.title,
+        [L.loadingTitle[0], L.loadingTitle[1] + noSub],
+        L.loadingTitleFontSize,
+        L.loadingTitleColor,
+        L.loadingTitleStroke,
+        L.loadingTitleMaxWidth,
+      );
       this.drawCenteredText(
         ctx,
         this.opts.subtitle,
@@ -385,6 +398,7 @@ export class TaikoRenderer implements FrameRenderer {
         L.loadingSubtitleFontSize,
         L.loadingSubtitleColor,
         L.loadingSubtitleStroke,
+        L.loadingSubtitleMaxWidth,
       );
     }
     ctx.globalAlpha = base;
@@ -441,14 +455,21 @@ export class TaikoRenderer implements FrameRenderer {
     }
   }
 
-  private drawCenteredText(ctx: Ctx2D, text: string, [x, y]: [number, number], size: number, fill: string, stroke: string) {
+  private drawCenteredText(
+    ctx: Ctx2D,
+    text: string,
+    [x, y]: [number, number],
+    size: number,
+    fill: string,
+    stroke: string,
+    maxW = this.width * 0.8,
+  ) {
     if (!text) return;
     ctx.save();
     ctx.font = `${size}px ${this.skin.fontFamily}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    const maxW = this.width * 0.8;
     const w = ctx.measureText(text).width;
     ctx.translate(x, y);
     if (w > maxW) ctx.scale(maxW / w, 1);
@@ -1004,6 +1025,42 @@ export class TaikoRenderer implements FrameRenderer {
     }
   }
 
+  /**
+   * GoGo-start fireworks (OpenTaiko GoGoSplash, single player): one sheet
+   * animation per position, bottom-centre anchored; with `rotate` the two
+   * outermost on each side tilt outwards by 8° and 16°.
+   */
+  private drawGogoSplash(ctx: Ctx2D, t: number): void {
+    const im = this.img('gogoSplash');
+    if (!im) return;
+    const G = this.skin.manifest.layout.gogoSplash;
+    const [fw, fh, n0] = G.frame;
+    const n = Math.min(n0, Math.floor(im.width / fw)); // skins sometimes declare more frames than they have
+    const start = this.play.course.gogo.map((g) => g.start).filter((s) => s <= t).pop();
+    if (start === undefined) return;
+    const frame = Math.floor((t - start) / G.frameMs);
+    if (frame >= n) return;
+    const count = Math.min(G.x.length, G.y.length);
+    const deg = Math.PI / 180;
+    for (let i = 0; i < count; i++) {
+      let rot = 0;
+      if (G.rotate) {
+        if (i === 0) rot = -16 * deg;
+        else if (i === 1) rot = -8 * deg;
+        else if (i === count - 2) rot = 8 * deg;
+        else if (i === count - 1) rot = 16 * deg;
+      }
+      // Bottom-centre anchored, rotated about the image centre.
+      const cx = G.x[i];
+      const cy = G.y[i] - fh / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      if (rot) ctx.rotate(rot);
+      ctx.drawImage(im, frame * fw, 0, fw, fh, -fw / 2, -fh / 2, fw, fh);
+      ctx.restore();
+    }
+  }
+
   /** Player nameplate from the 12-row NamePlate sheet (see SkinLayout.nameplate), plus text. */
   private drawNameplate(ctx: Ctx2D): void {
     const info = this.opts.nameplate;
@@ -1012,13 +1069,15 @@ export class TaikoRenderer implements FrameRenderer {
     const L = this.skin.manifest.layout;
     const rowH = im.height / 12;
     const s = L.nameplateScale;
+    const sy = L.nameplateScaleY || s;
     const k = (rowH / 54) * s; // sheet is authored with 54px rows at 720p
+    const ky = (rowH / 54) * sy;
     const w = im.width;
     const bs = L.nameplateBadgeScale;
     const [x, by] = L.nameplate;
     const px = x + L.nameplatePlateOffset * k; // plate starts right of the badge's centre
-    const y = by + (rowH * bs - rowH * s) / 2; // plate vertically centred on the badge
-    const row = (r: number, dx = px) => ctx.drawImage(im, 0, r * rowH, w, rowH, dx, y, w * s, rowH * s);
+    const y = by + (rowH * bs - rowH * sy) / 2; // plate vertically centred on the badge
+    const row = (r: number, dx = px) => ctx.drawImage(im, 0, r * rowH, w, rowH, dx, y, w * s, rowH * sy);
 
     row(3); // plate
     if (info.title && info.titleType) row(4 + info.titleType); // 5 gold, 6 purple
@@ -1026,7 +1085,7 @@ export class TaikoRenderer implements FrameRenderer {
       row(7); // dan plate
       if (info.danMedal) row(7 + info.danMedal); // 8 silver, 9 gold, 10 rainbow
     }
-    row(4); // outline
+    if (L.nameplateOutline) row(4); // outline
     ctx.drawImage(im, 0, 0, rowH, rowH, x, by, rowH * bs, rowH * bs); // "1P" badge
 
     const font = this.skin.fontFamily;
@@ -1049,14 +1108,15 @@ export class TaikoRenderer implements FrameRenderer {
       ctx.fillText(s, 0, 0);
       ctx.restore();
     };
-    text(info.title, px + 110 * k, y + 15 * k, 15 * k, 190 * k, info.titleType ? '#000' : '#333');
+    text(info.title, px + 110 * k, y + 15 * ky, 15 * ky, 190 * k, info.titleType ? '#000' : '#333');
     if (info.dan) {
       // Left part of the dan plate (the medal sits on its right part).
-      text(info.dan, px + 30 * k, y + 38 * k, 15 * k, 44 * k, '#fff', info.danMedal ? '#000' : '');
-      text(info.name, px + 152 * k, y + 38 * k, 21 * k, 112 * k, '#000');
+      text(info.dan, px + 30 * k, y + 38 * ky, 15 * ky, 44 * k, '#fff', info.danMedal ? '#000' : '');
+      text(info.name, px + 152 * k, y + 38 * ky, 22 * ky, 112 * k, '#fff', '#000');
     } else {
-      // Without a title strip the name sits in the middle of the plate.
-      text(info.name, px + 110 * k, y + (info.title && info.titleType ? 38 : 28) * k, 21 * k, 190 * k, '#000');
+      // Without a title strip the name sits in the middle of the plate (bigger, as in the arcade).
+      const hasTitle = !!(info.title && info.titleType);
+      text(info.name, px + 110 * k, y + (hasTitle ? 38 : 28) * ky, (hasTitle ? 20 : 22) * ky, 190 * k, '#fff', '#000');
     }
   }
 
@@ -1077,14 +1137,13 @@ export class TaikoRenderer implements FrameRenderer {
   /**
    * "+score" popups (OpenTaiko CActImplScore): each gain slides in from the
    * right while fading in, lifts a little, then drops into the score and
-   * vanishes (~420ms). Only the newest one is shown.
+   * vanishes (~420ms). Up to maxScoreAdds are shown.
    */
   private drawScoreAdds(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
     const sc = this.play.score;
     const DUR = 420;
-    // Only the newest popup: overlapping ones get unreadable in dense passages.
-    const [from, to] = this.newest(sc, t, DUR, 1);
+    const [from, to] = this.newest(sc, t, DUR, this.opts.maxScoreAdds ?? 10);
     for (let i = Math.max(1, from); i < to; i++) {
       const delta = sc[i].value - sc[i - 1].value;
       if (delta <= 0) continue;

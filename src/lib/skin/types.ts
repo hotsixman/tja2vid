@@ -76,6 +76,7 @@ export const IMAGE_KEYS = [
   'loadingPlate',
   'nameplate',
   'scoreAdd',
+  'gogoSplash',
 ] as const;
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 
@@ -163,6 +164,9 @@ export interface SkinLayout {
   loadingTitle: XY;
   loadingSubtitle: XY;
   loadingTitleFontSize: number;
+  /** Loading title / subtitle wider than these are squeezed horizontally (SongLoading_*_MaxSize). */
+  loadingTitleMaxWidth: number;
+  loadingSubtitleMaxWidth: number;
   loadingSubtitleFontSize: number;
   loadingCharaMove: XY;
   /** Text colours for the loading screen (empty stroke = no outline). */
@@ -182,10 +186,20 @@ export interface SkinLayout {
    * The plate is vertically centred on the badge.
    */
   nameplateScale: number;
+  /** Vertical plate scale (0 = same as nameplateScale). */
+  nameplateScaleY: number;
   nameplateBadgeScale: number;
+  /** Draw the sheet's thick outline row over the plate. */
+  nameplateOutline: boolean;
   nameplatePlateOffset: number;
   /** Where "+score" popups appear (right-aligned over 7 digit slots, bottom anchored). */
   scoreAdd: XY;
+  /**
+   * GoGo-start fireworks (OpenTaiko GoGoSplash, 1 player only): sheet frame size
+   * and count, ms per frame, bottom-centre positions, and whether the outer
+   * ones tilt outwards.
+   */
+  gogoSplash: { frame: [number, number, number]; frameMs: number; x: number[]; y: number[]; rotate: boolean };
   /** How the loading screen gives way to play: crossfade, or split open like a curtain. */
   loadingTransition: 'fade' | 'curtain';
 }
