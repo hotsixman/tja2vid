@@ -123,6 +123,7 @@ const COUNT_KEYS = new Set<keyof SkinLayout>([
   'rollNumberScale',
   'balloonNumberScale',
   'balloonDigitInterval',
+  'mobScale',
   'loadingTitleOutline',
   'loadingTitleLetterSpacing',
   'comboBalloonSqueeze',

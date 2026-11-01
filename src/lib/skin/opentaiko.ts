@@ -461,6 +461,15 @@ export function applyOpenTaikoIni(
   // tja2vid extension: separate digit spacing for the balloon counter
   const bdi = nums(game.Game_Balloon_Balloon_Number_Interval)[0];
   if (bdi !== undefined && bdi > 0) l.balloonDigitInterval = bdi;
+  // tja2vid extension: arcade mob placement
+  const mobS = nums(game.Game_Mob_Scale)[0];
+  if (mobS !== undefined && mobS > 0) l.mobScale = mobS;
+  const mobX = nums(game.Game_Mob_X);
+  if (mobX.length) l.mobX = [mobX[0], mobX[1] ?? mobX[0]];
+  const mobY = nums(game.Game_Mob_Y)[0];
+  if (mobY !== undefined) l.mobY = mobY;
+  const mobJ = nums(game.Game_Mob_Jump)[0];
+  if (mobJ !== undefined) l.mobJump = mobJ;
   const bns = nums(game.Game_Balloon_Balloon_Number_Scale)[0];
   if (bns !== undefined && bns > 0) l.balloonNumberScale = bns;
   // In-game title: Game_MusicName_X/Y is the top-right corner.

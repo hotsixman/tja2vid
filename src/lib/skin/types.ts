@@ -161,6 +161,15 @@ export interface SkinLayout {
   balloonNumberScale: number;
   /** Digit spacing for the balloon counter (0 = same as balloonNumberInterval). */
   balloonDigitInterval: number;
+  /**
+   * Mob placement (tja2vid extension; TJAPlayer3 draws the image unscaled at
+   * x 0 with its top at screen height − (image height − 70)): scale, x offset
+   * of the left and right halves, top y at rest and hop height.
+   */
+  mobScale?: number;
+  mobX?: XY;
+  mobY?: number;
+  mobJump?: number;
   /** In-game song title: right edge and vertical centre. */
   title: XY;
   /** Titles wider than this are squeezed horizontally (OpenTaiko Game_MusicName_MaxWidth). */

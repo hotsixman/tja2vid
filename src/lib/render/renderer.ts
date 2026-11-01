@@ -1081,10 +1081,13 @@ export class TaikoRenderer implements FrameRenderer {
   }
 
   /**
-   * TJAPlayer3 mob (CAct演奏DrumsMob): while the soul gauge is full, the crowd
-   * stands at the bottom of the screen (70px of it hidden at 720p) and hops
-   * 70px every `beat` beats along |sin|, landing on the beat. It rises in
-   * from below over 400ms when the gauge first fills.
+   * Mob (TJAPlayer3 CAct演奏DrumsMob): while the soul gauge is full, the crowd
+   * stands at the bottom of the screen and hops once per `beat` beats along
+   * |sin|, landing on the beat. Measured on the arcade: when the gauge fills
+   * it springs up from below in ~70ms to 20px (720p) above its normal peak,
+   * then settles into the hop by ~230ms. Layout mobScale/mobX/mobY/mobJump
+   * place the left and right halves separately (arcade); by default it is
+   * drawn like TJAPlayer3.
    */
   private drawMob(ctx: Ctx2D, t: number): void {
     const mob = this.skin.mob;
@@ -1093,13 +1096,30 @@ export class TaikoRenderer implements FrameRenderer {
     const im = mob.images[Math.min(idx, mob.images.length - 1)];
     if (!im || this.fullGaugeTime === undefined || t < this.fullGaugeTime) return;
     if (stepAt(this.play.gauge, t) < 100) return;
+    const L = this.skin.manifest.layout;
     const u = this.height / 720;
+    const s = L.mobScale ?? 1;
+    const h = im.height * s;
+    const jump = L.mobJump ?? 70 * u;
+    const restY = L.mobY ?? this.height - (h - 70 * u);
     const cycle = this.beatsAt(t) / Math.max(1e-6, mob.beat);
-    const hop = Math.abs(Math.sin((cycle - Math.floor(cycle)) * Math.PI)) * 70 * u;
-    const rise = Math.min(1, (t - this.fullGaugeTime) / 400);
-    const enter = (1 - (1 - rise) * (1 - rise)) * (im.height - 70 * u);
-    const y = this.height - enter - hop * rise;
-    ctx.drawImage(im, 0, y);
+    const hop = Math.abs(Math.sin((cycle - Math.floor(cycle)) * Math.PI)) * jump;
+    // Entrance: offset from the regular position, starting fully hidden.
+    const e = t - this.fullGaugeTime;
+    const over = -20 * u;
+    let enter = 0;
+    if (e < 70) {
+      const p = 1 - (1 - e / 70) ** 2;
+      enter = (this.height - (restY - hop)) * (1 - p) + over * p;
+    } else if (e < 230) {
+      const p = Math.max(0, (e - 110) / 120);
+      enter = over * (1 - (p * p * (3 - 2 * p)));
+    }
+    const y = restY - hop + enter;
+    const [lx, rx] = L.mobX ?? [0, 0];
+    const half = im.width / 2;
+    ctx.drawImage(im, 0, 0, half, im.height, lx, y, half * s, h);
+    ctx.drawImage(im, half, 0, half, im.height, rx + half * s, y, half * s, h);
   }
 
   /** OpenTaiko dancers: one motion cycle every `beat` beats, shown once the gauge reaches their threshold. */
