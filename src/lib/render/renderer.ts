@@ -53,8 +53,15 @@ const SOUL_FLASH_FRAME_MS = 19;
 const COMBO_POP_MS = 90;
 const ROLL_LINGER_MS = 1000;
 const MIN_COMBO_SHOWN = 10;
-/** Loading-screen → play transition length (curtain: measured from arcade footage). */
-const INTRO_TRANSITION_MS = 360;
+/**
+ * Loading-screen → play curtain, measured from arcade footage. Each half slides
+ * outwards while being squeezed horizontally: a point f px (720p) from the
+ * screen edge in the curtain image is at f·(1 − 0.0008τ) − 0.76τ after τ ms
+ * (outer stripes move 0.84px/ms, the inner edge ~1.24px/ms); gone after ~505ms.
+ */
+const CURTAIN_SLIDE_720 = 0.76;
+const CURTAIN_SQUEEZE = 0.0008;
+const INTRO_TRANSITION_MS = Math.ceil(640 / (CURTAIN_SLIDE_720 + 640 * CURTAIN_SQUEEZE));
 /** Arcade loading-screen length the timings below were measured for (ms). */
 const LOADING_REF_MS = 4284;
 /** OpenTaiko's score bounce (13ms per step). */
@@ -299,7 +306,7 @@ export class TaikoRenderer implements FrameRenderer {
 
     if (intro && t < intro.end + INTRO_TRANSITION_MS) {
       const p = (t - intro.end) / INTRO_TRANSITION_MS;
-      if (this.skin.manifest.layout.loadingTransition === 'curtain') this.drawCurtain(ctx, p);
+      if (this.skin.manifest.layout.loadingTransition === 'curtain') this.drawCurtain(ctx, t - intro.end);
       else {
         ctx.globalAlpha = 1 - p;
         this.drawLoading(ctx, t);
@@ -418,7 +425,9 @@ export class TaikoRenderer implements FrameRenderer {
    *   700      title/subtitle appear; characters settle 6px right / 13px down
    *   D−317    title disappears
    *   D−300…−167  plate and sparkles fade out
-   *   D−200…−100  characters fade out, leaving the plain background
+   *   D−300…−250  characters dip 13px (ease-out) and hold
+   *   D−234…      characters rise, accelerating (0.716τ + 0.00312τ² px, τ in ms),
+   *               fading out over D−150…−80, leaving the plain background
    * Timings are compressed proportionally for screens shorter than the arcade's.
    */
   private drawLoading(ctx: Ctx2D, t: number): void {
@@ -443,13 +452,19 @@ export class TaikoRenderer implements FrameRenderer {
     }
 
     const chara = this.img('loadingChara');
-    const charaA = ramp(0, 250) * (curtain ? 1 - ramp(end - 200, 100) : 1);
+    const charaA = ramp(0, 250) * (curtain ? 1 - ramp(end - 150, 70) : 1);
     if (chara && charaA > 0) {
       // Diagonal slide-in (ease-out), then a small settle when the title appears.
       const slide = 200 * Math.pow(1 - ramp(0, 317), 1.2);
       const settled = e >= 700;
       const dx = (-slide - (settled ? 0 : 6)) * u;
-      const dy = (-slide - (settled ? 0 : 13)) * u;
+      let dy = (-slide - (settled ? 0 : 13)) * u;
+      if (curtain && e >= end - 300) {
+        // Exit: a small dip, then an accelerating rise while fading out.
+        const dip = 13 * easeOutCubic((e - (end - 300)) / 50);
+        const tau = Math.max(0, e - (end - 234));
+        dy += (dip - (0.716 * tau + 0.00312 * tau * tau)) * u;
+      }
       const half = chara.width / 2;
       const sx = this.width / chara.width;
       const sy = this.height / chara.height;
@@ -509,17 +524,20 @@ export class TaikoRenderer implements FrameRenderer {
    * the skin's Fade.png (a curtain drawing), its two halves slide apart;
    * otherwise the loading background is split along curved edges.
    */
-  private drawCurtain(ctx: Ctx2D, p: number): void {
+  private drawCurtain(ctx: Ctx2D, tau: number): void {
     const W = this.width;
     const H = this.height;
     const fade = this.img('loadingFade');
     if (fade) {
       const half = fade.width / 2;
-      const shift = (W / 2) * p;
-      ctx.drawImage(fade, 0, 0, half, fade.height, -shift, 0, W / 2, H);
-      ctx.drawImage(fade, half, 0, half, fade.height, W / 2 + shift, 0, W / 2, H);
+      const u = H / 720;
+      const slide = CURTAIN_SLIDE_720 * tau * u;
+      const w = (W / 2) * Math.max(0, 1 - CURTAIN_SQUEEZE * tau);
+      ctx.drawImage(fade, 0, 0, half, fade.height, -slide, 0, w, H);
+      ctx.drawImage(fade, half, 0, half, fade.height, W + slide - w, 0, w, H);
       return;
     }
+    const p = Math.min(1, tau / INTRO_TRANSITION_MS);
     const shift = (W / 2) * p;
     const bulge = W * 0.14 * Math.sin(Math.min(1, p * 1.6) * Math.PI * 0.5);
     for (const side of [-1, 1] as const) {
