@@ -1007,9 +1007,9 @@ export class TaikoRenderer implements FrameRenderer {
       ctx.globalAlpha = 1;
     }
     if (this.opts.showDancer !== false) this.drawDancers(ctx, t);
-    this.drawMob(ctx, t); // in front of the dancers, under the footer
     const footer = this.img('footer');
     if (footer) ctx.drawImage(footer, 0, this.height - footer.height);
+    this.drawMob(ctx, t); // in front of the dancers and the footer
   }
 
   private drawBackground(ctx: Ctx2D, t: number): void {
@@ -1058,11 +1058,11 @@ export class TaikoRenderer implements FrameRenderer {
     }
 
     if (this.opts.showDancer !== false) this.drawDancers(ctx, t);
-    this.drawMob(ctx, t); // in front of the dancers, under the footer
 
     // Footer, bottom-aligned.
     const footer = this.img('footer');
     if (footer) ctx.drawImage(footer, 0, this.height - footer.height);
+    this.drawMob(ctx, t); // in front of the dancers and the footer
   }
 
   /** Number of beats elapsed at song time t (follows BPM changes). */
@@ -1081,7 +1081,7 @@ export class TaikoRenderer implements FrameRenderer {
   }
 
   /**
-   * Mob (TJAPlayer3 CAct演奏DrumsMob), drawn in front of the dancers: while
+   * Mob (TJAPlayer3 CAct演奏DrumsMob), drawn in front of the dancers and the footer: while
    * the soul gauge is full, the crowd stands at the bottom of the screen and
    * hops once per `beat` beats along |sin|, landing on the beat. Measured on the arcade: when the gauge fills
    * it springs up from below in ~70ms to 20px (720p) above its normal peak,
