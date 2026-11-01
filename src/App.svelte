@@ -40,7 +40,7 @@
   let fps = $state<FrameRate>(60);
   let resolutionIndex = $state(0);
   let quality = $state<QualityName>('high');
-  let rollSpeed = $state(15);
+  let rollSpeed = $state(21);
   let musicVolume = $state(1);
   let hitVolume = $state(0.7);
   let showTitle = $state(true);
@@ -64,9 +64,9 @@
       JSON.stringify({ show: showNameplate, name: npName }),
     );
   });
-  let maxJudgeTexts = $state(2);
-  let maxHitEffects = $state(1);
-  let maxScoreAdds = $state(10);
+  let maxJudgeTexts = $state(3);
+  let maxHitEffects = $state(2);
+  let maxScoreAdds = $state(5);
   let showIntro = $state(true);
   let introSec = $state(4.3);
   let endResult = $state<EndResult>('dondaFullCombo');

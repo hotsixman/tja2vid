@@ -10,7 +10,7 @@ export interface RenderOptions {
   showTitle: boolean;
   /** Draw the skin's dancers (if it has any). Defaults to true. */
   showDancer?: boolean;
-  /** Mob (crowd) variant shown behind the dancers at full gauge; -1 hides it. Defaults to 0. */
+  /** Mob (crowd) variant shown in front of the dancers at full gauge; -1 hides it. Defaults to 0. */
   mobIndex?: number;
   /** Genre plate under the in-game title; omitted or empty text = not drawn. */
   genre?: { text: string; background: string; color: string };
@@ -20,11 +20,11 @@ export interface RenderOptions {
   endResult?: EndResult;
   /** Player nameplate; omitted = not drawn. */
   nameplate?: NameplateInfo;
-  /** Max judgement texts on screen at once (newest kept). Defaults to 2. */
+  /** Max judgement texts on screen at once (newest kept). Defaults to 3. */
   maxJudgeTexts?: number;
-  /** Max "+score" popups on screen at once (newest kept). Defaults to 10, like OpenTaiko. */
+  /** Max "+score" popups on screen at once (newest kept). Defaults to 5. */
   maxScoreAdds?: number;
-  /** Max hit explosions on screen at once (newest kept). Defaults to 1. */
+  /** Max hit explosions on screen at once (newest kept). Defaults to 2. */
   maxHitEffects?: number;
   /** Draw the skin's character (if it has one). Defaults to true. */
   showCharacter?: boolean;
@@ -165,6 +165,8 @@ export class TaikoRenderer implements FrameRenderer {
   private readonly donHits: Hit[];
   private readonly kaHits: Hit[];
   private readonly laneFlashes: { hits: Hit[]; key: ImageKey }[];
+  /** Notes flying to the soul gauge: judged notes plus every drumroll hit (as a don). */
+  private readonly flyers: { time: number; col: number }[];
   private readonly rollByNote = new Map<number, RollState>();
   private readonly clearTime: number;
   /** Song time the soul gauge first reaches 100 (mob appears). */
@@ -188,6 +190,12 @@ export class TaikoRenderer implements FrameRenderer {
       { hits: play.hits.filter((h) => h.source !== 'note'), key: 'laneYellow' },
     ];
     for (const r of play.rolls) this.rollByNote.set(r.noteIndex, r);
+    this.flyers = [
+      ...play.judgements.map((j) => ({ time: j.time, col: NOTE_COL[play.course.notes[j.noteIndex].type] })),
+      ...play.hits
+        .filter((h) => h.source === 'roll')
+        .map((h) => ({ time: h.time, col: play.course.notes[h.noteIndex].type === 'bigRoll' ? NOTE_COL.bigDon : NOTE_COL.don })),
+    ].sort((a, b) => a.time - b.time);
     this.beatPoints = buildBeatPoints(play);
     const g = play.gauge.find((s) => s.value >= play.clearThreshold);
     this.clearTime = g ? g.time : Infinity;
@@ -1232,7 +1240,7 @@ export class TaikoRenderer implements FrameRenderer {
     const dur = frames * EXPLOSION_FRAME_MS;
     const js = this.play.judgements;
     ctx.globalCompositeOperation = 'lighter';
-    const [from, to] = this.newest(js, t, dur, this.opts.maxHitEffects ?? 1);
+    const [from, to] = this.newest(js, t, dur, this.opts.maxHitEffects ?? 2);
     for (let i = from; i < to; i++) {
       const j = js[i];
       const frame = Math.floor((t - j.time) / EXPLOSION_FRAME_MS);
@@ -1313,12 +1321,12 @@ export class TaikoRenderer implements FrameRenderer {
         continue;
       }
 
-      if (t >= end) continue;
       const roll = this.rollByNote.get(i);
       let x = sx + this.dx(n.time, n.bpm, n.scroll, t);
       let xEnd = sx + this.dx(end, n.endBpm ?? n.bpm, n.endScroll ?? n.scroll, t);
 
       if (n.type === 'balloon') {
+        if (t >= end) continue;
         if (roll?.popTime !== undefined && t >= roll.popTime) continue;
         if (t >= n.time) {
           x = sx;
@@ -1332,7 +1340,9 @@ export class TaikoRenderer implements FrameRenderer {
         continue;
       }
 
-      if (Math.min(x, xEnd) > W || Math.max(x, xEnd) < -nw) continue;
+      // Drumrolls keep scrolling past the judge circle (like the arcade) until
+      // they leave the screen.
+      if (Math.min(x, xEnd) > W || Math.max(x, xEnd) + nw < 0) continue;
       const head = NOTE_COL[n.type];
       const bodyStart = x + nw / 2;
       const bodyLen = xEnd - bodyStart + nw / 2;
@@ -1537,7 +1547,7 @@ export class TaikoRenderer implements FrameRenderer {
     const L = this.skin.manifest.layout;
     const sc = this.play.score;
     const DUR = 420;
-    const [from, to] = this.newest(sc, t, DUR, this.opts.maxScoreAdds ?? 10);
+    const [from, to] = this.newest(sc, t, DUR, this.opts.maxScoreAdds ?? 5);
     for (let i = Math.max(1, from); i < to; i++) {
       const delta = sc[i].value - sc[i - 1].value;
       if (delta <= 0) continue;
@@ -1695,7 +1705,7 @@ export class TaikoRenderer implements FrameRenderer {
     if (!im) return;
     const rowH = im.height / Math.max(1, this.skin.manifest.layout.judgeRows);
     const js = this.play.judgements;
-    const [from, to] = this.newest(js, t, JUDGE_MS, this.opts.maxJudgeTexts ?? 2);
+    const [from, to] = this.newest(js, t, JUDGE_MS, this.opts.maxJudgeTexts ?? 3);
     for (let i = from; i < to; i++) {
       const e = t - js[i].time;
       const move = easeOutCubic(e / JUDGE_MS) - 1;
@@ -1712,8 +1722,7 @@ export class TaikoRenderer implements FrameRenderer {
     const [nw, nh] = L.noteSize;
     const [x0, y0] = L.flyingStart;
     const [x1, y1] = L.flyingEnd;
-    const js: Judgement[] = this.play.judgements;
-    const notes = this.play.course.notes;
+    const fl = this.flyers;
 
     // Soul flash on arrival.
     const flash = this.img('soulExplosion');
@@ -1721,20 +1730,19 @@ export class TaikoRenderer implements FrameRenderer {
       const [fw, fh, frames] = L.notesFlash;
       const dur = frames * SOUL_FLASH_FRAME_MS;
       ctx.globalCompositeOperation = 'lighter';
-      for (let i = lowerBound(js, t - FLY_MS - dur); i < js.length && js[i].time <= t - FLY_MS; i++) {
-        const frame = Math.floor((t - FLY_MS - js[i].time) / SOUL_FLASH_FRAME_MS);
+      for (let i = lowerBound(fl, t - FLY_MS - dur); i < fl.length && fl[i].time <= t - FLY_MS; i++) {
+        const frame = Math.floor((t - FLY_MS - fl[i].time) / SOUL_FLASH_FRAME_MS);
         if (frame < 0 || frame >= frames) continue;
         ctx.drawImage(flash, frame * fw, 0, fw, fh, x1 - fw / 2, y1 - fh / 2, fw, fh);
       }
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    for (let i = lowerBound(js, t - FLY_MS); i < js.length && js[i].time <= t; i++) {
-      const p = (t - js[i].time) / FLY_MS;
+    for (let i = lowerBound(fl, t - FLY_MS); i < fl.length && fl[i].time <= t; i++) {
+      const p = (t - fl[i].time) / FLY_MS;
       const x = x0 + (x1 - x0) * p;
       const y = y0 + (y1 - y0) * p - Math.sin(p * Math.PI) * L.flyingSine;
-      const col = NOTE_COL[notes[js[i].noteIndex].type];
-      this.drawRect(ctx, 'notes', col * nw, 0, nw, nh, x - nw / 2, y - nh / 2);
+      this.drawRect(ctx, 'notes', fl[i].col * nw, 0, nw, nh, x - nw / 2, y - nh / 2);
     }
   }
 
