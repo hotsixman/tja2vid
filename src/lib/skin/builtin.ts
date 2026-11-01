@@ -108,6 +108,9 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingSubtitleStroke: '#15121f',
   loadingTransition: 'fade',
   nameplate: [12, 552],
+  nameplateScale: 1,
+  nameplatePlateOffset: 38,
+  scoreAdd: [24, 440],
 };
 
 const BACKGROUND: BackgroundSpec = {
@@ -974,6 +977,28 @@ function loadingChara(): OffscreenCanvas {
   return c;
 }
 
+// ------------------------------------------------------------------ rainbow gauge
+
+/** Rainbow overlay for a full gauge: 12 frames of hue-shifted cells (crossfaded by the renderer). */
+function rainbowFrames(): OffscreenCanvas[] {
+  return Array.from({ length: 12 }, (_, f) => {
+    const [c, ctx] = canvas(1040, 60);
+    roundRect(ctx, 0, 0, 1040, 60, 12);
+    ctx.clip();
+    const cells = 50;
+    const cw = 1040 / cells;
+    for (let i = 0; i < cells; i++) {
+      ctx.fillStyle = `hsl(${(i * 12 - f * 30 + 3600) % 360}, 95%, 62%)`;
+      ctx.fillRect(i * cw, 0, cw, 60);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(i * cw + cw - 2, 0, 2, 60);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillRect(0, 0, 1040, 14);
+    return c;
+  });
+}
+
 // ------------------------------------------------------------------ nameplate
 
 /** Nameplate sheet in the standard 12-row layout (rows of 81px = 54px × 1.5). */
@@ -1422,6 +1447,7 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       loadingPlate: loadingPlate(),
       loadingChara: loadingChara(),
       nameplate: nameplateSheet(),
+      scoreAdd: digitsSheet(39, 51, () => '#ff9a3d', COLOR.outline),
     };
     const layerSprites: Record<string, OffscreenCanvas> = {
       'gen:sky': sky(false),
@@ -1479,7 +1505,10 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
     );
     const character: LoadedCharacter = { x: 40, y: 10, balloonX: 40, balloonY: 10, scale: 1, states: characterStates };
 
+    const gaugeRainbow = { frames: await Promise.all(rainbowFrames().map(bitmap)), frameMs: 50 };
+
     return {
+      gaugeRainbow,
       manifest: BUILTIN_MANIFEST,
       images,
       sounds: { don: synthDon(), ka: synthKa() },

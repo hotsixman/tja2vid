@@ -75,6 +75,7 @@ export const IMAGE_KEYS = [
   'loadingChara',
   'loadingPlate',
   'nameplate',
+  'scoreAdd',
 ] as const;
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 
@@ -173,6 +174,11 @@ export interface SkinLayout {
    * title strips, dan plate, silver/gold/rainbow dan medals, gold bar.
    */
   nameplate: XY;
+  /** Nameplate draw scale, and the plate's offset right of the badge (in 54px-row units). */
+  nameplateScale: number;
+  nameplatePlateOffset: number;
+  /** Where "+score" popups appear (right-aligned over 7 digit slots, bottom anchored). */
+  scoreAdd: XY;
   /** How the loading screen gives way to play: crossfade, or split open like a curtain. */
   loadingTransition: 'fade' | 'curtain';
 }
@@ -198,6 +204,8 @@ export interface SkinManifest {
    * `<dir>/Great/0.png …`, `Great_Big`, `Good`, `Good_Big` (OpenTaiko 10_Effects/Hit).
    */
   hitEffect?: { dir: string; frameMs?: number };
+  /** Rainbow gauge frames shown when the gauge is full: `<dir>/0.png …` (OpenTaiko 7_Gauge/Rainbow). */
+  gaugeRainbow?: { dir: string; frameMs?: number };
   /**
    * Data-driven background. When present it replaces the built-in
    * OpenTaiko-style background (the bgUp… and bgDown… images).
@@ -335,6 +343,7 @@ export interface LoadedSkin {
   dancer?: LoadedDancer;
   character?: LoadedCharacter;
   hitEffect?: { great: ImageSource[]; greatBig: ImageSource[]; frameMs: number };
+  gaugeRainbow?: { frames: ImageSource[]; frameMs: number };
   /** Images used by background layers, keyed by BackgroundLayer.image. */
   layerImages: Record<string, ImageSource>;
 }

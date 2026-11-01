@@ -11,9 +11,9 @@ export interface RenderOptions {
   showDancer?: boolean;
   /** Player nameplate; omitted = not drawn. */
   nameplate?: NameplateInfo;
-  /** Max judgement texts on screen at once (newest kept). Defaults to 1. */
+  /** Max judgement texts on screen at once (newest kept). Defaults to 2. */
   maxJudgeTexts?: number;
-  /** Max hit explosions on screen at once (newest kept). Defaults to 2. */
+  /** Max hit explosions on screen at once (newest kept). Defaults to 1. */
   maxHitEffects?: number;
   /** Draw the skin's character (if it has one). Defaults to true. */
   showCharacter?: boolean;
@@ -56,6 +56,8 @@ const COMBO_POP_MS = 90;
 const ROLL_LINGER_MS = 1000;
 const MIN_COMBO_SHOWN = 10;
 const INTRO_TRANSITION_MS = 450;
+/** OpenTaiko's score bounce (13ms per step). */
+const SCORE_SCALE = [1, 1.05, 1.1, 1.11, 1.12, 1.125, 1.12, 1.08, 1.065, 1.03, 1.015, 1];
 
 interface CharaSegment {
   start: number;
@@ -321,6 +323,7 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawGauge(ctx, t);
     // Above the lane and gauge (the balloon pose overlaps the lane), below the counters.
     if (this.opts.showCharacter !== false) this.drawCharacter(ctx, t);
+    this.drawScoreAdds(ctx, t); // over the character, like the arcade
     this.drawRollAndBalloon(ctx, t);
     this.drawJudgeText(ctx, t);
     this.drawFlyingNotes(ctx, t);
@@ -795,7 +798,7 @@ export class TaikoRenderer implements FrameRenderer {
     const dur = frames * EXPLOSION_FRAME_MS;
     const js = this.play.judgements;
     ctx.globalCompositeOperation = 'lighter';
-    const [from, to] = this.newest(js, t, dur, this.opts.maxHitEffects ?? 2);
+    const [from, to] = this.newest(js, t, dur, this.opts.maxHitEffects ?? 1);
     for (let i = from; i < to; i++) {
       const j = js[i];
       const frame = Math.floor((t - j.time) / EXPLOSION_FRAME_MS);
@@ -959,19 +962,12 @@ export class TaikoRenderer implements FrameRenderer {
     const ck = COURSE_KEY[this.play.course.course];
     if (ck) this.draw(ctx, ck, L.courseSymbol[0], L.courseSymbol[1]);
 
-    // Score: right-aligned over 7 slots, bottom anchored.
+    // Score: right-aligned over 7 slots, bottom anchored, with a bounce on every gain.
     const score = stepAt(this.play.score, t);
-    const sIm = this.img('score');
-    if (sIm) {
-      const s = String(score);
-      const [dw, dh] = L.scoreSize;
-      const slots = Math.max(7, s.length);
-      for (let i = 0; i < s.length; i++) {
-        const d = s.charCodeAt(i) - 48;
-        const x = L.score[0] + L.scorePadding * (slots - s.length + i);
-        ctx.drawImage(sIm, d * dw, 0, dw, dh, x, L.score[1] - dh, dw, dh);
-      }
-    }
+    const sc = this.play.score;
+    const lastGain = sc[Math.max(0, lowerBound(sc, t + 0.0001) - 1)].time;
+    const bounce = SCORE_SCALE[Math.floor((t - lastGain) / 13)] ?? 1;
+    this.drawScoreDigits(ctx, 'score', score, L.score[0], L.score[1], bounce);
 
     // Combo.
     const combo = stepAt(this.play.combo, t);
@@ -1013,12 +1009,14 @@ export class TaikoRenderer implements FrameRenderer {
     const info = this.opts.nameplate;
     const im = this.img('nameplate');
     if (!info || !im) return;
+    const L = this.skin.manifest.layout;
     const rowH = im.height / 12;
-    const k = rowH / 54; // sheet is authored with 54px rows at 720p
+    const s = L.nameplateScale;
+    const k = (rowH / 54) * s; // sheet is authored with 54px rows at 720p
     const w = im.width;
-    const [x, y] = this.skin.manifest.layout.nameplate;
-    const px = x + 38 * k; // plate starts right of the badge's centre
-    const row = (r: number, dx = px) => ctx.drawImage(im, 0, r * rowH, w, rowH, dx, y, w, rowH);
+    const [x, y] = L.nameplate;
+    const px = x + L.nameplatePlateOffset * k; // plate starts right of the badge's centre
+    const row = (r: number, dx = px) => ctx.drawImage(im, 0, r * rowH, w, rowH, dx, y, w * s, rowH * s);
 
     row(3); // plate
     if (info.title && info.titleType) row(4 + info.titleType); // 5 gold, 6 purple
@@ -1027,7 +1025,7 @@ export class TaikoRenderer implements FrameRenderer {
       if (info.danMedal) row(7 + info.danMedal); // 8 silver, 9 gold, 10 rainbow
     }
     row(4); // outline
-    ctx.drawImage(im, 0, 0, rowH, rowH, x, y, rowH, rowH); // "1P" badge
+    ctx.drawImage(im, 0, 0, rowH, rowH, x, y, rowH * s, rowH * s); // "1P" badge
 
     const font = this.skin.fontFamily;
     const text = (s: string, cx: number, cy: number, size: number, maxW: number, fill: string, stroke = '') => {
@@ -1053,9 +1051,68 @@ export class TaikoRenderer implements FrameRenderer {
     if (info.dan) {
       // Left part of the dan plate (the medal sits on its right part).
       text(info.dan, px + 30 * k, y + 38 * k, 15 * k, 44 * k, '#fff', info.danMedal ? '#000' : '');
-      text(info.name, px + 152 * k, y + 38 * k, 19 * k, 112 * k, '#000');
+      text(info.name, px + 152 * k, y + 38 * k, 21 * k, 112 * k, '#000');
     } else {
-      text(info.name, px + 110 * k, y + 38 * k, 19 * k, 190 * k, '#000');
+      // Without a title strip the name sits in the middle of the plate.
+      text(info.name, px + 110 * k, y + (info.title && info.titleType ? 38 : 28) * k, 21 * k, 190 * k, '#000');
+    }
+  }
+
+  private drawScoreDigits(ctx: Ctx2D, key: ImageKey, value: number, x0: number, bottom: number, scaleY = 1) {
+    const im = this.img(key) ?? this.img('score');
+    if (!im) return;
+    const L = this.skin.manifest.layout;
+    const s = String(value);
+    const [dw, dh] = L.scoreSize;
+    const slots = Math.max(7, s.length);
+    for (let i = 0; i < s.length; i++) {
+      const d = s.charCodeAt(i) - 48;
+      const x = x0 + L.scorePadding * (slots - s.length + i);
+      ctx.drawImage(im, d * dw, 0, dw, dh, x, bottom - dh * scaleY, dw, dh * scaleY);
+    }
+  }
+
+  /**
+   * "+score" popups (OpenTaiko CActImplScore): each gain slides in from the
+   * right while fading in, lifts a little, then drops into the score and
+   * vanishes (~420ms). Only the newest one is shown.
+   */
+  private drawScoreAdds(ctx: Ctx2D, t: number): void {
+    const L = this.skin.manifest.layout;
+    const sc = this.play.score;
+    const DUR = 420;
+    // Only the newest popup: overlapping ones get unreadable in dense passages.
+    const [from, to] = this.newest(sc, t, DUR, 1);
+    for (let i = Math.max(1, from); i < to; i++) {
+      const delta = sc[i].value - sc[i - 1].value;
+      if (delta <= 0) continue;
+      const v = (t - sc[i].time) / 2; // OpenTaiko counter: 2ms per step
+      let xAdd = 0;
+      let alpha = 1;
+      if (v < 10) [xAdd, alpha] = [25, 150 / 255];
+      else if (v < 20) [xAdd, alpha] = [10, 200 / 255];
+      else if (v < 30) [xAdd, alpha] = [-5, 250 / 255];
+      else if (v < 40) xAdd = -9;
+      else if (v < 50) xAdd = -10;
+      else if (v < 60) xAdd = -9;
+      else if (v < 70) xAdd = -5;
+      else if (v < 80) xAdd = -3;
+      let yAdd = 0;
+      if (v > 210) [yAdd, alpha] = [20, 0];
+      else if (v > 200) [yAdd, alpha] = [12, 150 / 255];
+      else if (v > 190) [yAdd, alpha] = [5, 200 / 255];
+      else if (v > 180) yAdd = 0;
+      else if (v > 170) yAdd = -6;
+      else if (v > 150) yAdd = -8;
+      else if (v > 140) yAdd = -7;
+      else if (v > 130) yAdd = -5;
+      else if (v > 120) yAdd = -1;
+      if (alpha <= 0) continue;
+      // Offsets are in 720p pixels.
+      const k = this.height / 720;
+      ctx.globalAlpha = alpha;
+      this.drawScoreDigits(ctx, 'scoreAdd', delta, L.scoreAdd[0] + xAdd * k, L.scoreAdd[1] + yAdd * k);
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -1075,6 +1132,22 @@ export class TaikoRenderer implements FrameRenderer {
     const clearKey: ImageKey = this.img('gaugeClear') ? 'gaugeClear' : 'gaugeFill';
     this.drawRect(ctx, 'gaugeFill', rx, ry, Math.min(filledW, clearW), rh, gx, gy);
     if (filledW > clearW) this.drawRect(ctx, clearKey, rx + clearW, ry, filledW - clearW, rh, gx + clearW, gy);
+
+    // Full gauge: rainbow overlay, each frame crossfading into the next (OpenTaiko 7_Gauge/Rainbow).
+    const rb = this.skin.gaugeRainbow;
+    if (value >= 100 && rb && rb.frames.length) {
+      const n = rb.frames.length;
+      const pos = t / rb.frameMs;
+      const cur = ((Math.floor(pos) % n) + n) % n;
+      const next = (cur + 1) % n;
+      const a = pos - Math.floor(pos);
+      const f0 = rb.frames[cur];
+      ctx.drawImage(f0, gx, gy, f0.width, f0.height);
+      ctx.globalAlpha = a;
+      const f1 = rb.frames[next];
+      ctx.drawImage(f1, gx, gy, f1.width, f1.height);
+      ctx.globalAlpha = 1;
+    }
 
     const cleared = value >= this.play.clearThreshold;
     const [cx, cy, cw, ch] = cleared ? L.gaugeClearTextClearRect : L.gaugeClearTextRect;
@@ -1155,7 +1228,7 @@ export class TaikoRenderer implements FrameRenderer {
     if (!im) return;
     const rowH = im.height / Math.max(1, this.skin.manifest.layout.judgeRows);
     const js = this.play.judgements;
-    const [from, to] = this.newest(js, t, JUDGE_MS, this.opts.maxJudgeTexts ?? 1);
+    const [from, to] = this.newest(js, t, JUDGE_MS, this.opts.maxJudgeTexts ?? 2);
     for (let i = from; i < to; i++) {
       const e = t - js[i].time;
       const move = easeOutCubic(e / JUDGE_MS) - 1;

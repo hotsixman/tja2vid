@@ -78,6 +78,9 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
   nameplate: [0, 450],
+  nameplateScale: 1,
+  nameplatePlateOffset: 38,
+  scoreAdd: [27, 279],
   loadingTransition: 'curtain',
 };
 
@@ -157,6 +160,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     loadingChara: 'Graphics/4_SongLoading/Chara.png',
     loadingPlate: 'Graphics/4_SongLoading/Plate.png',
     nameplate: 'Graphics/NamePlate.png',
+    scoreAdd: `${G}/6_Taiko/Score_1P.png`,
   },
   sounds: {
     don: 'Sounds/Taiko/dong.ogg',
@@ -164,6 +168,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
   },
   layout: OPENTAIKO_LAYOUT,
   hitEffect: { dir: `${G}/10_Effects/Hit` },
+  gaugeRainbow: { dir: `${G}/7_Gauge/Rainbow` },
 };
 
 /**
@@ -236,6 +241,9 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
   nameplate: [-5, 297],
+  nameplateScale: 1,
+  nameplatePlateOffset: 38,
+  scoreAdd: [20, 186],
   loadingTransition: 'curtain',
 };
 
@@ -273,6 +281,7 @@ const INI_PAIRS: [keyof SkinLayout, string, string?][] = [
   ['rollNumber', 'Game_Balloon_Roll_Number_X', 'Game_Balloon_Roll_Number_Y'],
   ['loadingPlate', 'SongLoading_Plate_X', 'SongLoading_Plate_Y'],
   ['nameplate', 'Game_Taiko_NamePlate_X', 'Game_Taiko_NamePlate_Y'],
+  ['scoreAdd', 'Game_Score_Add_X', 'Game_Score_Add_Y'],
   ['loadingTitle', 'SongLoading_Title_X', 'SongLoading_Title_Y'],
   ['loadingSubtitle', 'SongLoading_SubTitle_X', 'SongLoading_SubTitle_Y'],
 ];
@@ -369,6 +378,11 @@ export function applyOpenTaikoIni(
   l.loadingTitleStroke = color('SongLoading_Title_BackColor') ?? l.loadingTitleStroke;
   l.loadingSubtitleColor = color('SongLoading_SubTitle_ForeColor') ?? l.loadingSubtitleColor;
   l.loadingSubtitleStroke = color('SongLoading_SubTitle_BackColor') ?? l.loadingSubtitleStroke;
+  // tja2vid extensions: nameplate scale / plate offset
+  const nps = nums(game.Game_Taiko_NamePlate_Scale)[0];
+  if (nps !== undefined && nps > 0) l.nameplateScale = nps;
+  const npo = nums(game.Game_Taiko_NamePlate_PlateOffset)[0];
+  if (npo !== undefined) l.nameplatePlateOffset = npo;
   // tja2vid extension: SongLoading_Transition=fade|curtain
   const tr = game.SongLoading_Transition?.trim().toLowerCase();
   if (tr === 'fade' || tr === 'curtain') l.loadingTransition = tr;

@@ -66,8 +66,8 @@
       JSON.stringify({ show: showNameplate, name: npName, title: npTitle, dan: npDan, titleType: npTitleType, danMedal: npDanMedal }),
     );
   });
-  let maxJudgeTexts = $state(1);
-  let maxHitEffects = $state(2);
+  let maxJudgeTexts = $state(2);
+  let maxHitEffects = $state(1);
   let showIntro = $state(true);
   let introSec = $state(3);
 
