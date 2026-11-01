@@ -9,6 +9,10 @@ export interface RenderOptions {
   showTitle: boolean;
   /** Draw the skin's dancers (if it has any). Defaults to true. */
   showDancer?: boolean;
+  /** Max judgement texts on screen at once (newest kept). Defaults to 1. */
+  maxJudgeTexts?: number;
+  /** Max hit explosions on screen at once (newest kept). Defaults to 2. */
+  maxHitEffects?: number;
   /** Draw the skin's character (if it has one). Defaults to true. */
   showCharacter?: boolean;
   /**
@@ -775,7 +779,8 @@ export class TaikoRenderer implements FrameRenderer {
     const dur = frames * EXPLOSION_FRAME_MS;
     const js = this.play.judgements;
     ctx.globalCompositeOperation = 'lighter';
-    for (let i = lowerBound(js, t - dur); i < js.length && js[i].time <= t; i++) {
+    const [from, to] = this.newest(js, t, dur, this.opts.maxHitEffects ?? 2);
+    for (let i = from; i < to; i++) {
       const j = js[i];
       const frame = Math.floor((t - j.time) / EXPLOSION_FRAME_MS);
       if (frame >= frames) continue;
@@ -1070,13 +1075,21 @@ export class TaikoRenderer implements FrameRenderer {
     }
   }
 
+  /** Index range [from, to) of the newest `max` items that started within `windowMs` before t. */
+  private newest<T extends { time: number }>(arr: T[], t: number, windowMs: number, max: number): [number, number] {
+    const to = lowerBound(arr, t + 0.0001);
+    const from = Math.max(lowerBound(arr, t - windowMs), to - Math.max(0, Math.floor(max)));
+    return [from, to];
+  }
+
   private drawJudgeText(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
     const im = this.img('judge');
     if (!im) return;
     const rowH = im.height / Math.max(1, this.skin.manifest.layout.judgeRows);
     const js = this.play.judgements;
-    for (let i = lowerBound(js, t - JUDGE_MS); i < js.length && js[i].time <= t; i++) {
+    const [from, to] = this.newest(js, t, JUDGE_MS, this.opts.maxJudgeTexts ?? 1);
+    for (let i = from; i < to; i++) {
       const e = t - js[i].time;
       const move = easeOutCubic(e / JUDGE_MS) - 1;
       const x = L.judge[0] + move * L.judgeMove[0];

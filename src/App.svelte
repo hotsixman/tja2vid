@@ -45,6 +45,8 @@
   let showTitle = $state(true);
   let showDancer = $state(true);
   let showCharacter = $state(true);
+  let maxJudgeTexts = $state(1);
+  let maxHitEffects = $state(2);
   let showIntro = $state(true);
   let introSec = $state(3);
 
@@ -174,6 +176,8 @@
     showTitle,
     showDancer,
     showCharacter,
+    maxJudgeTexts,
+    maxHitEffects,
     intro: timeline.intro,
     title: titleOverride || parsed?.meta.title || '',
     subtitle: subtitleOverride || parsed?.meta.subtitle || '',
@@ -456,6 +460,14 @@
         <label>
           타격음 볼륨 {Math.round(hitVolume * 100)}%
           <input type="range" min="0" max="1.5" step="0.05" bind:value={hitVolume} />
+        </label>
+        <label>
+          판정 표시 최대 개수
+          <input type="number" min="1" max="10" step="1" bind:value={maxJudgeTexts} />
+        </label>
+        <label>
+          타격 이펙트 최대 개수
+          <input type="number" min="1" max="10" step="1" bind:value={maxHitEffects} />
         </label>
         <label>
           시작 전 여유 (초)
