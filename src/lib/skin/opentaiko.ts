@@ -92,6 +92,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   nameplateBadgeScale: 1,
   nameplateScaleY: 0,
   nameplateOutline: true,
+  nameplateStyle: 'sheet',
   nameplatePlateOffset: 38,
   scoreAdd: [27, 279],
   loadingTransition: 'curtain',
@@ -269,6 +270,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   nameplateBadgeScale: 1,
   nameplateScaleY: 0,
   nameplateOutline: true,
+  nameplateStyle: 'sheet',
   nameplatePlateOffset: 38,
   scoreAdd: [20, 186],
   loadingTransition: 'curtain',
@@ -414,6 +416,8 @@ export function applyOpenTaikoIni(
   if (npb !== undefined && npb > 0) l.nameplateBadgeScale = npb;
   const npy = nums(game.Game_Taiko_NamePlate_ScaleY)[0];
   if (npy !== undefined && npy > 0) l.nameplateScaleY = npy;
+  const nst = game.Game_Taiko_NamePlate_Style?.trim().toLowerCase();
+  if (nst === 'sheet' || nst === 'arcade') l.nameplateStyle = nst;
   if (game.Game_Taiko_NamePlate_Outline !== undefined) l.nameplateOutline = /^(1|true)$/i.test(game.Game_Taiko_NamePlate_Outline.trim());
   const tmw = nums(game.SongLoading_Title_MaxSize)[0];
   if (tmw !== undefined && tmw > 0) l.loadingTitleMaxWidth = tmw;

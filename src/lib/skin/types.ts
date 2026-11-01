@@ -191,6 +191,13 @@ export interface SkinLayout {
   nameplateBadgeScale: number;
   /** Draw the sheet's thick outline row over the plate. */
   nameplateOutline: boolean;
+  /**
+   * 'sheet': plate built from the NamePlate sheet rows. 'arcade': the plate is
+   * drawn in code to match the Nijiiro arcade (title strip on the top half,
+   * dark dan section with a silver pill bottom-left); only the badge comes from
+   * the sheet.
+   */
+  nameplateStyle: 'sheet' | 'arcade';
   nameplatePlateOffset: number;
   /** Where "+score" popups appear (right-aligned over 7 digit slots, bottom anchored). */
   scoreAdd: XY;

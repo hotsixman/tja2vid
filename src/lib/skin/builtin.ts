@@ -115,6 +115,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   nameplateBadgeScale: 1,
   nameplateScaleY: 0,
   nameplateOutline: true,
+  nameplateStyle: 'sheet',
   gogoSplash: {
     frame: [345, 690, 31],
     frameMs: 15,
