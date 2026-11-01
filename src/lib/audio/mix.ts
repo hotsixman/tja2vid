@@ -12,6 +12,8 @@ export interface MixOptions {
   durationMs: number;
   /** Result jingle to play when the result animation starts. */
   endResult?: EndResult;
+  /** End of the song (audio) in song time; the result animation starts then. */
+  songEndMs?: number | null;
 }
 
 /** Decodes an encoded audio file using a throwaway context. */
@@ -72,7 +74,7 @@ export async function mixSoundtrack(
   };
   const key = endKey[opts.endResult ?? 'dondaFullCombo'];
   const jingle = key ? await decode(skin.sounds[key] ?? (key === 'endDondaFullCombo' ? skin.sounds.endFullCombo : undefined)) : null;
-  const when = (endAnimationTime(play) + opts.leadInMs) / 1000;
+  const when = (endAnimationTime(play, opts.songEndMs) + opts.leadInMs) / 1000;
   if (jingle && when >= 0 && when * 1000 < opts.durationMs) {
     const src = ctx.createBufferSource();
     src.buffer = jingle;

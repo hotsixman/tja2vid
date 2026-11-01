@@ -18,7 +18,13 @@ export const END_RESULTS: { value: EndResult; label: string }[] = [
 /** Delay after the last note before the result animation starts (ms). */
 export const END_DELAY_MS = 300;
 
-/** Song time (ms) at which the result animation starts. */
-export function endAnimationTime(play: Playthrough): number {
-  return play.lastTime + END_DELAY_MS;
+/**
+ * Song time (ms) at which the result animation starts: once the song has
+ * completely finished (end of the audio), and never before the last note.
+ */
+export function endAnimationTime(play: Playthrough, songEndMs?: number | null): number {
+  return Math.max(play.lastTime + END_DELAY_MS, songEndMs ?? -Infinity);
 }
+
+/** Default time the result animation stays on screen (ms). */
+export const END_HOLD_MS = 6000;

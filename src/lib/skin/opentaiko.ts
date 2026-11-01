@@ -94,6 +94,12 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   comboBalloonText: [606, 99],
   comboBalloonTextEx: [606, 99],
   comboBalloonTextRect: [0, 186, 150, 46],
+  comboBalloonStyle: 'opentaiko',
+  comboBalloonGroupCenterX: 166,
+  comboBalloonDigitTop: 63,
+  comboBalloonLabelTop: 97,
+  comboBalloonSpacing: [43, 36],
+  comboBalloonSqueeze: 0.85,
   genre: [1482, 105],
   genreFontSize: 24,
   nameplate: [0, 450],
@@ -296,6 +302,12 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   comboBalloonText: [440, 85],
   comboBalloonTextEx: [440, 85],
   comboBalloonTextRect: [0, 124, 100, 30],
+  comboBalloonStyle: 'opentaiko',
+  comboBalloonGroupCenterX: 166,
+  comboBalloonDigitTop: 63,
+  comboBalloonLabelTop: 97,
+  comboBalloonSpacing: [43, 36],
+  comboBalloonSqueeze: 0.85,
   genre: [1015, 70],
   genreFontSize: 16,
   nameplate: [-5, 297],
@@ -440,6 +452,9 @@ export function applyOpenTaikoIni(
   const gy = nums(game.Game_Genre_Y)[0];
   if (gx !== undefined || gy !== undefined) l.genre = [gx ?? l.genre[0], gy ?? l.genre[1]];
   l.genreFontSize = pt('Game_GenreText_FontSize') ?? l.genreFontSize;
+  // tja2vid extension: Nijiiro-style centred combo balloon
+  const cbs = game.Game_Balloon_Combo_Style?.trim().toLowerCase();
+  if (cbs === 'centered' || cbs === 'opentaiko') l.comboBalloonStyle = cbs;
   const rns = nums(game.Game_Balloon_Roll_Number_Scale)[0];
   if (rns !== undefined && rns > 0) l.rollNumberScale = rns;
   // tja2vid extension: separate digit spacing for the balloon counter

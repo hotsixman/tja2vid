@@ -13,7 +13,7 @@
   import { clearDefaultSkin, loadDefaultSkinZip, saveDefaultSkin } from './lib/skin/storage';
   import { decodeAudio, mixSoundtrack } from './lib/audio/mix';
   import { computeTimeline } from './lib/timeline';
-  import { END_DELAY_MS, END_RESULTS, type EndResult } from './lib/endResult';
+  import { END_HOLD_MS, END_RESULTS, endAnimationTime, type EndResult } from './lib/endResult';
   import { exportVideo, isExportSupported, type FrameRate, type QualityName } from './lib/video/export';
 
   const SAMPLE_RATE = 48000;
@@ -69,6 +69,8 @@
   let showIntro = $state(true);
   let introSec = $state(4.3);
   let endResult = $state<EndResult>('dondaFullCombo');
+  let endHoldSec = $state(END_HOLD_MS / 1000);
+  const songEndMs = $derived(music ? music.duration * 1000 : null);
 
   // Genre plate under the in-game title (colours remembered in localStorage)
   const GENRE_KEY = 'tja2vid.genre';
@@ -207,7 +209,7 @@
           endMode,
           introMs: showIntro ? Math.max(0.5, introSec) * 1000 : 0,
           // Let the result animation play out and stay on screen.
-          minTailMs: endResult === 'none' ? 0 : END_DELAY_MS + 4000,
+          minEndMs: endResult === 'none' ? undefined : endAnimationTime(play, songEndMs) + endHoldSec * 1000,
         })
       : { leadInMs: 0, durationMs: 1000 },
   );
@@ -219,6 +221,7 @@
     maxHitEffects,
     maxScoreAdds,
     endResult,
+    songEndMs,
     genre: showGenre ? { text: genreOverride || parsed?.meta.genre || '', background: genreBg, color: genreColor } : undefined,
     nameplate: showNameplate
       ? { name: npName }
@@ -285,6 +288,7 @@
         leadInMs: timeline.leadInMs,
         durationMs: timeline.durationMs,
         endResult,
+        songEndMs,
       });
       if (version === mixVersion) {
         soundtrack = buf;
@@ -385,6 +389,7 @@
         leadInMs: timeline.leadInMs,
         durationMs: timeline.durationMs,
         endResult,
+        songEndMs,
       });
       if (abort.signal.aborted) throw new DOMException('Export cancelled', 'AbortError');
       const r = new TaikoRenderer(skin, play, renderOpts);
@@ -566,10 +571,14 @@
       </div>
       <label class="check"><input type="checkbox" bind:checked={showTitle} /> 곡 제목 표시</label>
       <label>
-        결과 연출 (마지막 노트 후)
+        결과 연출 (곡이 끝난 뒤)
         <select bind:value={endResult}>
           {#each END_RESULTS as r (r.value)}<option value={r.value}>{r.label}</option>{/each}
         </select>
+      </label>
+      <label class="inline">
+        결과 연출 표시 시간
+        <input type="number" min="1" max="30" step="0.5" bind:value={endHoldSec} disabled={endResult === 'none'} style="width: 4.5em" /> 초
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={showCharacter} disabled={!skin?.character} /> 캐릭터 표시

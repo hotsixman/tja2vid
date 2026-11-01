@@ -226,6 +226,18 @@ export interface SkinLayout {
   comboBalloonText: XY;
   comboBalloonTextEx: XY;
   comboBalloonTextRect: [number, number, number, number];
+  /**
+   * 'opentaiko': digits/label at the fixed Game_Balloon_Combo_* positions.
+   * 'centered' (Nijiiro arcade): digits + label centred as a group on the plate
+   * (positions below are 720p px relative to the plate's top-left); four or more
+   * digits are squeezed horizontally.
+   */
+  comboBalloonStyle: 'opentaiko' | 'centered';
+  comboBalloonGroupCenterX: number;
+  comboBalloonDigitTop: number;
+  comboBalloonLabelTop: number;
+  comboBalloonSpacing: [number, number];
+  comboBalloonSqueeze: number;
   /** Genre plate (top-left of the 13_GENRE template) and text size. */
   genre: XY;
   genreFontSize: number;

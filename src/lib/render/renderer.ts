@@ -12,6 +12,8 @@ export interface RenderOptions {
   showDancer?: boolean;
   /** Genre plate under the in-game title; omitted or empty text = not drawn. */
   genre?: { text: string; background: string; color: string };
+  /** Song time when the song has completely finished (end of the audio); the result animation starts then. */
+  songEndMs?: number | null;
   /** Result animation after the last note. Defaults to 'dondaFullCombo' (perfect autoplay). */
   endResult?: EndResult;
   /** Player nameplate; omitted = not drawn. */
@@ -423,6 +425,11 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.drawImage(plate, frame * pw, 0, pw, plate.height, L.comboBalloon[0], L.comboBalloon[1], pw, plate.height);
     if (numA > 0) {
       ctx.globalAlpha = base * numA;
+      if (L.comboBalloonStyle === 'centered') {
+        this.drawCenteredComboBalloon(ctx, nums, combo);
+        ctx.globalAlpha = base;
+        return;
+      }
       const ex = combo >= 1000;
       const [nx, ny] = ex ? L.comboBalloonNumberEx : L.comboBalloonNumber;
       const [dw, dh] = L.comboBalloonNumberSize;
@@ -437,6 +444,34 @@ export class TaikoRenderer implements FrameRenderer {
       ctx.drawImage(nums, rx, ry, rw, rh, tx + 6 - frame * 3, ty, rw, rh);
     }
     ctx.globalAlpha = base;
+  }
+
+  /**
+   * Nijiiro arcade combo balloon text, measured from arcade footage: the digits
+   * and the "コンボ!" label form one group centred on the plate; 4+ digits use
+   * tighter spacing and are squeezed horizontally (label included).
+   */
+  private drawCenteredComboBalloon(ctx: Ctx2D, nums: ImageSource, combo: number): void {
+    const L = this.skin.manifest.layout;
+    const u = this.height / 720;
+    const [px, py] = L.comboBalloon;
+    const [dw, dh] = L.comboBalloonNumberSize;
+    const [rx, ry, rw, rh] = L.comboBalloonTextRect;
+    const s = String(combo);
+    const long = s.length >= 4;
+    const sx = long ? L.comboBalloonSqueeze : 1;
+    const step = (long ? L.comboBalloonSpacing[1] : L.comboBalloonSpacing[0]) * u;
+    const gw = dw * sx;
+    const labelGap = -2 * u;
+    const width = step * (s.length - 1) + gw + labelGap + rw * sx;
+    let x = px + L.comboBalloonGroupCenterX * u - width / 2;
+    const top = py + L.comboBalloonDigitTop * u;
+    for (const ch of s) {
+      ctx.drawImage(nums, dw * Number(ch), 0, dw, dh, x, top, gw, dh);
+      x += step;
+    }
+    x += gw - step + labelGap;
+    ctx.drawImage(nums, rx, ry, rw, rh, x, py + L.comboBalloonLabelTop * u, rw * sx, rh);
   }
 
   private genreCache: { key: string; canvas: OffscreenCanvas } | null = null;
@@ -493,7 +528,7 @@ export class TaikoRenderer implements FrameRenderer {
     const result = this.opts.endResult ?? 'dondaFullCombo';
     const anim = this.skin.endAnim;
     if (result === 'none' || !anim) return;
-    const e = t - endAnimationTime(this.play);
+    const e = t - endAnimationTime(this.play, this.opts.songEndMs);
     if (e < 0) return;
     if (anim.procedural) {
       anim.procedural(ctx, result, e);
