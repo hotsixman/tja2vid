@@ -592,8 +592,12 @@ async function loadEndAnim(resolve: SkinFileResolver, manifest: SkinManifest): P
   };
   // TJAPlayer3: the loop is drawn at scroll field Y + 4 once the sequence has ended.
   if (fcLoop.length) out.fullComboLoop = { frames: fcLoop, frameMs: loopFrameMs, x: L.lane[0], y: L.scrollField[1] + 4 * u };
-  // TJAPlayer3: bg.png at the lane from the 34th frame (33ms each) of the original sequence.
-  if (dfcBg) out.dondaBackground = { image: dfcBg, x: L.lane[0], y: L.scrollField[1], fromMs: 34 * 33 };
+  // TJAPlayer3: bg.png at the lane from the 34th of the original 62 frames; skins
+  // with interpolated (more) frames keep the same point of the sequence.
+  if (dfcBg) {
+    const fromMs = 34 * frameMs * Math.max(1, dfc.length / 62);
+    out.dondaBackground = { image: dfcBg, x: L.lane[0], y: L.scrollField[1], fromMs };
+  }
   if (text && l.every(Boolean) && r.every(Boolean)) {
     out.clearParts = { l: l as ImageSource[], r: r as ImageSource[], text, effect: effect ?? undefined };
   }

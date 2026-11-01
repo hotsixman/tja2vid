@@ -329,9 +329,11 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawJudgeCircle(ctx);
     this.drawBars(ctx, t); // bar lines go over the judge circle
     this.drawGogoFire(ctx, t);
-    this.drawExplosions(ctx, t);
     this.drawHitEffect(ctx, t);
     this.drawNotes(ctx, t);
+    // The additive explosion burst goes over the notes and the SE text bar
+    // (OpenTaiko draws it after the notes), centred on the judge circle.
+    this.drawExplosions(ctx, t);
     this.drawTaikoPanel(ctx, t);
     this.drawGogoSplash(ctx, t);
     this.drawGauge(ctx, t);
@@ -543,7 +545,13 @@ export class TaikoRenderer implements FrameRenderer {
     const seq = donda ? anim.dondaFullCombo : anim.fullCombo;
     if (!seq) return;
     const bg = anim.dondaBackground;
-    if (donda && bg && e >= bg.fromMs) ctx.drawImage(bg.image, bg.x, bg.y);
+    if (donda && bg && e >= bg.fromMs) {
+      // The arcade cross-fades the gold background in over ~170ms.
+      const base = ctx.globalAlpha;
+      ctx.globalAlpha = base * Math.min(1, (e - bg.fromMs) / 170);
+      ctx.drawImage(bg.image, bg.x, bg.y);
+      ctx.globalAlpha = base;
+    }
     const loop = !donda ? anim.fullComboLoop : undefined;
     if (loop && e >= seq.frames.length * seq.frameMs) {
       const n = loop.frames.length;
