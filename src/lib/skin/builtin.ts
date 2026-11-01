@@ -112,10 +112,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingTransition: 'fade',
   nameplate: [12, 552],
   nameplateScale: 1,
-  nameplateBadgeScale: 1,
-  nameplateScaleY: 0,
   nameplateOutline: true,
-  nameplateStyle: 'sheet',
   gogoSplash: {
     frame: [345, 690, 31],
     frameMs: 15,
@@ -123,7 +120,6 @@ export const BUILTIN_LAYOUT: SkinLayout = {
     y: [1100, 1090, 1080, 1080, 1090, 1100],
     rotate: true,
   },
-  nameplatePlateOffset: 38,
   scoreAdd: [24, 440],
 };
 

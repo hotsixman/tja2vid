@@ -1054,32 +1054,26 @@ export class TaikoRenderer implements FrameRenderer {
     }
   }
 
-  /** Player nameplate: "1P" badge + plate + name (12-row NamePlate sheet, see SkinLayout.nameplate). */
+  /**
+   * Player nameplate from the 12-row NamePlate sheet: plate, optional outline
+   * and "1P" badge drawn at the same position and scale (the sheet is designed
+   * so they fit together), then the name.
+   */
   private drawNameplate(ctx: Ctx2D): void {
     const info = this.opts.nameplate;
     const im = this.img('nameplate');
     if (!info || !im) return;
     const L = this.skin.manifest.layout;
-    if (L.nameplateStyle === 'arcade') {
-      this.drawArcadeNameplate(ctx, info, im);
-      return;
-    }
     const rowH = im.height / 12;
     const s = L.nameplateScale;
-    const sy = L.nameplateScaleY || s;
     const k = (rowH / 54) * s; // sheet is authored with 54px rows at 720p
-    const ky = (rowH / 54) * sy;
     const w = im.width;
-    const bs = L.nameplateBadgeScale;
-    const [x, by] = L.nameplate;
-    const px = x + L.nameplatePlateOffset * k; // plate starts right of the badge's centre
-    const y = by + (rowH * bs - rowH * sy) / 2; // plate vertically centred on the badge
-    const row = (r: number) => ctx.drawImage(im, 0, r * rowH, w, rowH, px, y, w * s, rowH * sy);
-
+    const [x, y] = L.nameplate;
+    const row = (r: number) => ctx.drawImage(im, 0, r * rowH, w, rowH, x, y, w * s, rowH * s);
     row(3); // plate
     if (L.nameplateOutline) row(4); // outline
-    ctx.drawImage(im, 0, 0, rowH, rowH, x, by, rowH * bs, rowH * bs); // "1P" badge
-    this.drawNameText(ctx, info.name, px + 110 * k, y + 28 * ky, 22 * ky, 190 * k, 4 * ky);
+    row(0); // "1P" badge
+    this.drawNameText(ctx, info.name, x + 125 * k, y + 27 * k, 22 * k, 150 * k, 4 * k);
   }
 
   private drawNameText(ctx: Ctx2D, s: string, cx: number, cy: number, size: number, maxW: number, stroke: number) {
@@ -1098,30 +1092,6 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.fillStyle = '#fff';
     ctx.fillText(s, 0, 0);
     ctx.restore();
-  }
-
-  /**
-   * Nijiiro arcade nameplate, measured from arcade footage at 720p (numbers are
-   * 720p pixels relative to the badge's top-left): white rounded plate
-   * 31..213 × 0..47 with a 2px border, the name centred, the "1P" badge from
-   * the NamePlate sheet on top.
-   */
-  private drawArcadeNameplate(ctx: Ctx2D, info: NameplateInfo, sheet: ImageSource): void {
-    const L = this.skin.manifest.layout;
-    const u = this.height / 720;
-    const [bx, by] = L.nameplate;
-    const h = 47 * u;
-    ctx.beginPath();
-    ctx.roundRect(bx + 31 * u, by, 182 * u, h, h / 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.lineWidth = 2 * u;
-    ctx.strokeStyle = '#000';
-    ctx.stroke();
-    this.drawNameText(ctx, info.name, bx + 122 * u, by + 24 * u, 21 * u, 160 * u, 4 * u);
-    const rowH = sheet.height / 12;
-    const bs = L.nameplateBadgeScale;
-    ctx.drawImage(sheet, 0, 0, rowH, rowH, bx, by, rowH * bs, rowH * bs); // "1P" badge
   }
 
   private drawScoreDigits(ctx: Ctx2D, key: ImageKey, value: number, x0: number, bottom: number, scaleY = 1) {

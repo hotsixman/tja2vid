@@ -89,11 +89,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
     rotate: true,
   },
   nameplateScale: 1,
-  nameplateBadgeScale: 1,
-  nameplateScaleY: 0,
   nameplateOutline: true,
-  nameplateStyle: 'sheet',
-  nameplatePlateOffset: 38,
   scoreAdd: [27, 279],
   loadingTransition: 'curtain',
 };
@@ -267,11 +263,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
     rotate: true,
   },
   nameplateScale: 1,
-  nameplateBadgeScale: 1,
-  nameplateScaleY: 0,
   nameplateOutline: true,
-  nameplateStyle: 'sheet',
-  nameplatePlateOffset: 38,
   scoreAdd: [20, 186],
   loadingTransition: 'curtain',
 };
@@ -409,15 +401,9 @@ export function applyOpenTaikoIni(
   l.loadingTitleStroke = color('SongLoading_Title_BackColor') ?? l.loadingTitleStroke;
   l.loadingSubtitleColor = color('SongLoading_SubTitle_ForeColor') ?? l.loadingSubtitleColor;
   l.loadingSubtitleStroke = color('SongLoading_SubTitle_BackColor') ?? l.loadingSubtitleStroke;
-  // tja2vid extensions: nameplate scale / plate offset
+  // tja2vid extensions: nameplate scale / outline
   const nps = nums(game.Game_Taiko_NamePlate_Scale)[0];
   if (nps !== undefined && nps > 0) l.nameplateScale = nps;
-  const npb = nums(game.Game_Taiko_NamePlate_BadgeScale)[0];
-  if (npb !== undefined && npb > 0) l.nameplateBadgeScale = npb;
-  const npy = nums(game.Game_Taiko_NamePlate_ScaleY)[0];
-  if (npy !== undefined && npy > 0) l.nameplateScaleY = npy;
-  const nst = game.Game_Taiko_NamePlate_Style?.trim().toLowerCase();
-  if (nst === 'sheet' || nst === 'arcade') l.nameplateStyle = nst;
   if (game.Game_Taiko_NamePlate_Outline !== undefined) l.nameplateOutline = /^(1|true)$/i.test(game.Game_Taiko_NamePlate_Outline.trim());
   const tmw = nums(game.SongLoading_Title_MaxSize)[0];
   if (tmw !== undefined && tmw > 0) l.loadingTitleMaxWidth = tmw;
@@ -434,8 +420,6 @@ export function applyOpenTaikoIni(
     y: gsy.length ? gsy : l.gogoSplash.y,
     rotate: game.Game_Effect_GoGoSplash_Rotate !== undefined ? /^(1|true)$/i.test(game.Game_Effect_GoGoSplash_Rotate.trim()) : l.gogoSplash.rotate,
   };
-  const npo = nums(game.Game_Taiko_NamePlate_PlateOffset)[0];
-  if (npo !== undefined) l.nameplatePlateOffset = npo;
   // tja2vid extension: SongLoading_Transition=fade|curtain
   const tr = game.SongLoading_Transition?.trim().toLowerCase();
   if (tr === 'fade' || tr === 'curtain') l.loadingTransition = tr;

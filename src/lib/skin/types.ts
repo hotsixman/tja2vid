@@ -181,24 +181,13 @@ export interface SkinLayout {
    */
   nameplate: XY;
   /**
-   * Nameplate draw scales (plate, and the "1P" badge separately) and the
-   * plate's offset right of the badge (in 54px-row units of the plate scale).
-   * The plate is vertically centred on the badge.
+   * Nameplate draw scale. All sheet rows (badge, plate, outline) are drawn at
+   * the same position and scale: the sheet is designed so the badge sits
+   * exactly on the plate's left end.
    */
   nameplateScale: number;
-  /** Vertical plate scale (0 = same as nameplateScale). */
-  nameplateScaleY: number;
-  nameplateBadgeScale: number;
   /** Draw the sheet's thick outline row over the plate. */
   nameplateOutline: boolean;
-  /**
-   * 'sheet': plate built from the NamePlate sheet rows. 'arcade': the plate is
-   * drawn in code to match the Nijiiro arcade (title strip on the top half,
-   * dark dan section with a silver pill bottom-left); only the badge comes from
-   * the sheet.
-   */
-  nameplateStyle: 'sheet' | 'arcade';
-  nameplatePlateOffset: number;
   /** Where "+score" popups appear (right-aligned over 7 digit slots, bottom anchored). */
   scoreAdd: XY;
   /**
