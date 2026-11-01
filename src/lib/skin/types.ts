@@ -81,7 +81,8 @@ type XY = [number, number];
 
 /**
  * Layout in skin pixels (the skin's native resolution). Values for the default
- * skin come from OpenTaiko's GameConfig.ini (player 1 values).
+ * skin are set in builtin.ts; OpenTaiko-format skins map their GameConfig.ini
+ * (player 1 values) onto these fields.
  */
 export interface SkinLayout {
   /** Size of one cell in the notes sheet (Notes.png has 13 columns). */
@@ -159,6 +160,41 @@ export interface SkinManifest {
   credits?: string;
   /** Optional dancer set (OpenTaiko 2_Dancer format). */
   dancer?: DancerManifest;
+  /**
+   * Data-driven background. When present it replaces the built-in
+   * OpenTaiko-style background (the bgUp… and bgDown… images).
+   */
+  background?: BackgroundSpec;
+}
+
+export interface BackgroundSpec {
+  /** Fill colour behind everything. */
+  color?: string;
+  /** Drawn bottom to top. */
+  layers: BackgroundLayer[];
+}
+
+export interface BackgroundLayer {
+  /** Image path (relative to the skin root) or a generated image id. */
+  image: string;
+  x?: number;
+  y?: number;
+  /** Area to fill; defaults to the image size (or the full width when tileX). */
+  width?: number;
+  height?: number;
+  tileX?: boolean;
+  tileY?: boolean;
+  /** Scroll speed in px/s; positive moves the image left / up. */
+  scrollX?: number;
+  scrollY?: number;
+  /** Vertical bobbing: [amplitude px, period in beats]. */
+  bob?: [number, number];
+  /**
+   * 'normal' fades out and 'clear' fades in once the clear gauge is reached;
+   * 'always' (default) is always drawn.
+   */
+  show?: 'always' | 'normal' | 'clear';
+  opacity?: number;
 }
 
 /**
@@ -168,6 +204,8 @@ export interface SkinManifest {
  */
 export interface DancerManifest {
   dir: string;
+  /** Sub-folder per dancer, in order of appearance. Defaults to "1", "2", … */
+  folders?: string[];
   /** Frames per dancer. If omitted, frames are probed (0.png, 1.png, …) until one is missing. */
   frameCount?: number;
   config?: Partial<DancerConfig>;
@@ -202,7 +240,13 @@ export interface LoadedSkin {
   /** CSS font-family to use for text. */
   fontFamily: string;
   dancer?: LoadedDancer;
+  /** Images used by background layers, keyed by BackgroundLayer.image. */
+  layerImages: Record<string, ImageSource>;
 }
 
-/** Resolves a skin-relative path to its bytes (or null if missing). */
-export type SkinFileResolver = (path: string) => Promise<Blob | null>;
+/**
+ * Resolves a skin-relative path to its bytes (or null if missing). Resolvers
+ * backed by a folder or zip can also list their files, which enables
+ * auto-detection of dancer folders.
+ */
+export type SkinFileResolver = ((path: string) => Promise<Blob | null>) & { list?: () => string[] };

@@ -1,18 +1,16 @@
 import type { DancerConfig, SkinLayout, SkinManifest } from './types';
 
-/**
- * The official OpenTaiko repository, pinned to a commit so the layout below
- * keeps matching the images. Used when the assets were not fetched locally
- * (e.g. the GitHub Pages deployment): images are loaded straight from the
- * official repo instead of being redistributed with this app.
+/*
+ * Compatibility with OpenTaiko / TJAPlayer3-format skin folders.
+ *
+ * No skin assets ship with this app. This module only describes the folder
+ * layout and config files of that format, so users can load skins they have.
  */
-export const OPENTAIKO_REMOTE_BASE =
-  'https://raw.githubusercontent.com/0auBSQ/OpenTaiko/00d7389aa8b7a99333cdde53a0ac85aa3d487586/OpenTaiko/System/Open-World%20Memories/';
 
 const G = 'Graphics/5_Game';
 const BG = `${G}/5_Background/Normal`;
 
-/** Layout of OpenTaiko's default skin ("Open-World Memories"), 1920x1080, 1P values. */
+/** OpenTaiko 1920x1080 layout (values from its default skin's GameConfig.ini, 1P). */
 export const OPENTAIKO_LAYOUT: SkinLayout = {
   noteSize: [195, 195],
   scrollField: [523, 286],
@@ -75,8 +73,8 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
  * with this manifest (its GameConfig.ini is applied on top, see loader.ts).
  */
 export const OPENTAIKO_MANIFEST: SkinManifest = {
-  id: 'opentaiko',
-  name: 'OpenTaiko — Open-World Memories',
+  id: 'opentaiko-format',
+  name: 'OpenTaiko 형식 스킨',
   resolution: [1920, 1080],
   font: 'Fonts/MPLUSRounded1c-Medium.ttf',
   images: {
@@ -147,13 +145,65 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     ka: 'Sounds/Taiko/ka.ogg',
   },
   layout: OPENTAIKO_LAYOUT,
-  dancer: {
-    dir: `${G}/2_Dancer/Dashy`,
-    frameCount: 42,
-    config: { count: 1, x: [968], y: [770], beat: 80, gauge: [0] },
-  },
-  credits:
-    'Skin: OpenTaiko "Open-World Memories" © DashyDesu, OpenTaiko Team — OpenTaiko Extended License.',
+};
+
+/**
+ * OpenTaiko's built-in defaults (CSkin.cs), which are 1280x720 values. Older
+ * TJAPlayer3-style skins without a GameConfig.ini only override some of these.
+ */
+export const OPENTAIKO_720_LAYOUT: SkinLayout = {
+  noteSize: [130, 130],
+  scrollField: [349, 192],
+  pxPer4Beats: 960,
+  seNotesOffset: [-2, 131],
+  seNoteSize: [136, 30],
+  lane: [333, 192],
+  laneSub: [333, 326],
+  judge: [364, 152],
+  judgeMove: [0, 20],
+  taikoBackground: [0, 184],
+  taikoFrame: [329, 136],
+  taiko: [205, 206],
+  combo: [267, 272],
+  comboEx: [267, 274],
+  comboEx4: [267, 269],
+  comboPadding: [34, 34, 30],
+  comboSize: [40, 48],
+  comboText: [268, 298],
+  courseSymbol: [-4, 232],
+  score: [20, 226],
+  scorePadding: 20,
+  scoreSize: [24, 40],
+  gauge: [492, 144],
+  gaugeRect: [0, 0, 700, 44],
+  gaugeClearText: [1038, 144],
+  gaugeClearTextRect: [0, 44, 58, 24],
+  gaugeClearTextClearRect: [58, 44, 58, 24],
+  gaugeCells: 50,
+  soul: [1184, 125],
+  soulFire: [1112, 52],
+  soulFireFrames: 8,
+  flyingStart: [414, 260],
+  flyingEnd: [1222, 164],
+  flyingSine: 220,
+  notesFlash: [180, 180, 16],
+  hitExplosion: [284, 126],
+  hitExplosionFrames: 7,
+  gogoFire: [240, 71],
+  gogoFireFrames: 7,
+  balloon: [382, 115],
+  balloonFrame: [382, 80],
+  balloonNumber: [423, 187],
+  balloonNumberSize: [63, 75],
+  balloonNumberInterval: [55, 0],
+  rollFrame: [218, -3],
+  rollFrameFrames: 5,
+  rollNumber: [313, 122],
+  title: [1260, 47],
+  titleFontSize: 35,
+  subtitleFontSize: 20,
+  bgUpHeight: 192,
+  bgDownY: 360,
 };
 
 /**

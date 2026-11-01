@@ -173,9 +173,12 @@ export class TaikoRenderer implements FrameRenderer {
    * tiled fill becomes a single blit. Much cheaper than pattern fills per frame.
    */
   private strip(key: ImageKey, w: number, h: number): OffscreenCanvas | null {
-    const id = `${key}:${w}x${h}`;
+    return this.stripOf(key, this.img(key), w, h);
+  }
+
+  private stripOf(name: string, im: ImageSource | undefined, w: number, h: number): OffscreenCanvas | null {
+    const id = `${name}:${w}x${h}`;
     if (!this.strips.has(id)) {
-      const im = this.img(key);
       let c: OffscreenCanvas | null = null;
       if (im && typeof OffscreenCanvas !== 'undefined') {
         c = new OffscreenCanvas(Math.ceil(w + im.width), Math.ceil(h + im.height));
@@ -263,7 +266,47 @@ export class TaikoRenderer implements FrameRenderer {
     return this.play.course.gogo.some((g) => t >= g.start && t < g.end);
   }
 
+  /** Data-driven background (manifest.background). */
+  private drawBackgroundLayers(ctx: Ctx2D, t: number): void {
+    const spec = this.skin.manifest.background!;
+    ctx.fillStyle = spec.color ?? '#000';
+    ctx.fillRect(0, 0, this.width, this.height);
+    const clearFade = Math.max(0, Math.min(1, (t - this.clearTime) / 300));
+    const sec = t / 1000;
+    for (const layer of spec.layers) {
+      const im = this.skin.layerImages[layer.image];
+      if (!im) continue;
+      const show = layer.show ?? 'always';
+      const alpha = (layer.opacity ?? 1) * (show === 'clear' ? clearFade : show === 'normal' ? 1 - clearFade : 1);
+      if (alpha <= 0) continue;
+      let y = layer.y ?? 0;
+      if (layer.bob) y += Math.sin((this.beatsAt(t) / layer.bob[1]) * Math.PI * 2) * layer.bob[0];
+      const x = layer.x ?? 0;
+      const w = layer.width ?? (layer.tileX ? this.width - x : im.width);
+      const h = layer.height ?? (layer.tileY ? this.height - y : im.height);
+      ctx.globalAlpha = alpha;
+      if (layer.tileX || layer.tileY || layer.scrollX || layer.scrollY) {
+        const strip = this.stripOf(layer.image, im, w, h);
+        if (strip) {
+          const ox = (((sec * (layer.scrollX ?? 0)) % im.width) + im.width) % im.width;
+          const oy = (((sec * (layer.scrollY ?? 0)) % im.height) + im.height) % im.height;
+          ctx.drawImage(strip, layer.tileX || layer.scrollX ? ox : 0, layer.tileY || layer.scrollY ? oy : 0, w, h, x, y, w, h);
+        }
+      } else {
+        ctx.drawImage(im, 0, 0, im.width, im.height, x, y, w, h);
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (this.opts.showDancer !== false) this.drawDancers(ctx, t);
+    const footer = this.img('footer');
+    if (footer) ctx.drawImage(footer, 0, this.height - footer.height);
+  }
+
   private drawBackground(ctx: Ctx2D, t: number): void {
+    if (this.skin.manifest.background) {
+      this.drawBackgroundLayers(ctx, t);
+      return;
+    }
     const L = this.skin.manifest.layout;
     const W = this.width;
     ctx.fillStyle = '#000';
@@ -611,8 +654,10 @@ export class TaikoRenderer implements FrameRenderer {
     const clearW = clearCell * cellW;
 
     this.drawRect(ctx, 'gaugeBase', rx, ry, rw, rh, gx, gy);
+    // Skins without a separate Clear.png (TJAPlayer3 style) keep the whole bar in the fill image.
+    const clearKey: ImageKey = this.img('gaugeClear') ? 'gaugeClear' : 'gaugeFill';
     this.drawRect(ctx, 'gaugeFill', rx, ry, Math.min(filledW, clearW), rh, gx, gy);
-    if (filledW > clearW) this.drawRect(ctx, 'gaugeClear', rx + clearW, ry, filledW - clearW, rh, gx + clearW, gy);
+    if (filledW > clearW) this.drawRect(ctx, clearKey, rx + clearW, ry, filledW - clearW, rh, gx + clearW, gy);
 
     const cleared = value >= this.play.clearThreshold;
     const [cx, cy, cw, ch] = cleared ? L.gaugeClearTextClearRect : L.gaugeClearTextRect;

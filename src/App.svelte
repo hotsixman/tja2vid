@@ -6,9 +6,10 @@
   import type { Branch, ParsedTja } from './lib/tja/types';
   import { simulate } from './lib/sim/autoplay';
   import { TaikoRenderer } from './lib/render/renderer';
-  import { folderResolver, loadSkin, missingImages, urlResolver } from './lib/skin/loader';
+  import { folderResolver, loadSkin, missingImages, zipResolver } from './lib/skin/loader';
   import type { LoadedSkin } from './lib/skin/types';
-  import { OPENTAIKO_REMOTE_BASE } from './lib/skin/opentaiko';
+  import { loadBuiltinSkin } from './lib/skin/builtin';
+  import { clearDefaultSkin, loadDefaultSkinZip, saveDefaultSkin } from './lib/skin/storage';
   import { decodeAudio, mixSoundtrack } from './lib/audio/mix';
   import { computeTimeline } from './lib/timeline';
   import { exportVideo, isExportSupported, type FrameRate, type QualityName } from './lib/video/export';
@@ -52,34 +53,41 @@
   let skinStatus = $state('스킨 불러오는 중…');
   let skinMissing = $state<string[]>([]);
 
-  async function useSkin(promise: Promise<LoadedSkin>, label: string) {
+  let rememberSkin = $state(true);
+  let usingStoredSkin = $state(false);
+
+  async function useSkin(promise: Promise<LoadedSkin>, label: string): Promise<boolean> {
     skinStatus = `${label} 불러오는 중…`;
     try {
       const s = await promise;
-      skin = s;
-      skinMissing = missingImages(s);
       const total = Object.keys(s.manifest.images).length;
-      skinStatus =
-        skinMissing.length === total
-          ? `${label}: 이미지를 찾지 못했습니다.`
-          : `${s.manifest.name} (${total - skinMissing.length}/${total} 이미지)`;
+      const missing = missingImages(s);
+      if (total > 0 && missing.length === total) {
+        skinStatus = `${label}: 스킨 이미지를 찾지 못했습니다. 스킨 폴더/zip이 맞는지 확인하세요.`;
+        return false;
+      }
+      skin = s;
+      skinMissing = missing;
+      skinStatus = total ? `${s.manifest.name} (${total - missing.length}/${total} 이미지)` : s.manifest.name;
+      return true;
     } catch (e) {
       skinStatus = `스킨 로드 실패: ${(e as Error).message}`;
+      return false;
     }
   }
 
-  /**
-   * Default skin: locally fetched assets (`npm run fetch-assets`) if present,
-   * otherwise loaded directly from the official OpenTaiko repository.
-   */
-  async function loadDefaultSkin(): Promise<LoadedSkin> {
-    const local = await loadSkin(urlResolver(`${import.meta.env.BASE_URL}skins/opentaiko/`));
-    if (missingImages(local).length < Object.keys(local.manifest.images).length) return local;
-    return loadSkin(urlResolver(OPENTAIKO_REMOTE_BASE));
+  async function zipSkin(data: Blob): Promise<LoadedSkin> {
+    return loadSkin(zipResolver(new Uint8Array(await data.arrayBuffer())));
   }
 
-  onMount(() => {
-    void useSkin(loadDefaultSkin(), 'OpenTaiko 기본 스킨');
+  onMount(async () => {
+    // A skin zip the user chose earlier becomes their default; otherwise the built-in skin.
+    const stored = await loadDefaultSkinZip();
+    if (stored && (await useSkin(zipSkin(stored.data), stored.name))) {
+      usingStoredSkin = true;
+      return;
+    }
+    await useSkin(loadBuiltinSkin(), '기본 스킨');
   });
 
   function onSkinFolder(e: Event) {
@@ -87,8 +95,24 @@
     if (files && files.length) void useSkin(loadSkin(folderResolver(files)), '사용자 스킨');
   }
 
-  function resetSkin() {
-    void useSkin(loadDefaultSkin(), 'OpenTaiko 기본 스킨');
+  async function onSkinZip(e: Event) {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const ok = await useSkin(zipSkin(file), file.name);
+    if (ok && rememberSkin) {
+      try {
+        await saveDefaultSkin({ name: file.name, data: file });
+        usingStoredSkin = true;
+      } catch (err) {
+        console.warn('could not store skin', err);
+      }
+    }
+  }
+
+  async function resetSkin() {
+    await clearDefaultSkin().catch(() => {});
+    usingStoredSkin = false;
+    await useSkin(loadBuiltinSkin(), '기본 스킨');
   }
 
   // ---------------------------------------------------------------- derived chart
@@ -303,7 +327,7 @@
 <main class:dragging>
   <header>
     <h1>tja2vid</h1>
-    <p>TJA 채보와 음원을 넣으면 OpenTaiko 스타일 오토플레이 영상을 만들어 줍니다. 모든 처리는 브라우저 안에서 이루어집니다.</p>
+    <p>TJA 채보와 음원을 넣으면 태고 스타일 오토플레이 영상을 만들어 줍니다. 모든 처리는 브라우저 안에서 이루어집니다.</p>
   </header>
 
   <div class="layout">
@@ -417,21 +441,22 @@
 
       <h2>4. 스킨</h2>
       <p class="hint">{skinStatus}</p>
-      {#if skin && skinMissing.length === Object.keys(skin.manifest.images).length}
-        <p class="error">
-          기본 스킨 에셋을 불러오지 못했습니다. 네트워크를 확인하거나, 저장소 루트에서 <code>npm run fetch-assets</code>를 실행해
-          OpenTaiko 에셋을 내려받으세요.
-        </p>
-      {/if}
       <div class="row">
+        <label class="button">
+          스킨 zip 불러오기…
+          <input type="file" accept=".zip,application/zip" onchange={onSkinZip} hidden />
+        </label>
         <label class="button">
           스킨 폴더 불러오기…
           <input type="file" webkitdirectory multiple onchange={onSkinFolder} hidden />
         </label>
-        <button onclick={resetSkin}>기본 스킨</button>
+        <button onclick={resetSkin}>기본 스킨으로</button>
       </div>
+      <label class="check"><input type="checkbox" bind:checked={rememberSkin} /> 불러온 zip을 이 브라우저의 기본 스킨으로 기억</label>
+      {#if usingStoredSkin}<p class="hint small">저장된 스킨을 사용 중입니다. "기본 스킨으로"를 누르면 저장이 지워집니다.</p>{/if}
       <p class="hint small">
-        OpenTaiko 형식 스킨 폴더(GameConfig.ini 포함) 또는 <code>skin.json</code>이 있는 폴더를 선택할 수 있습니다.
+        <code>skin.json</code>이 있는 스킨, 또는 OpenTaiko / TJAPlayer3 형식 스킨(GameConfig.ini · SkinConfig.ini)을 불러올 수
+        있습니다. 스킨 파일은 브라우저 안에서만 쓰이고 업로드되지 않습니다.
       </p>
       {#if skin?.manifest.credits}<p class="hint small">{skin.manifest.credits}</p>{/if}
     </section>

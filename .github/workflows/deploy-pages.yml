@@ -26,9 +26,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      # OpenTaiko skin assets are intentionally NOT bundled (OpenTaiko Extended
-      # License forbids redistribution). The deployed app loads them at runtime
-      # from the official OpenTaiko repository instead.
+      # The default skin is generated in code; no third-party skin assets are bundled.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
