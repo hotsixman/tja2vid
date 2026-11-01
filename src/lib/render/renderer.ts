@@ -29,15 +29,8 @@ export interface RenderOptions {
 }
 
 export interface NameplateInfo {
+  /** Player name shown on the plate. */
   name: string;
-  /** 称号 shown on the title strip. */
-  title: string;
-  /** 段位 shown on the dark plate (empty = none). */
-  dan: string;
-  /** Title strip colour: 0 none, 1 gold, 2 purple. */
-  titleType: 0 | 1 | 2;
-  /** Dan medal: 0 none, 1 silver, 2 gold, 3 rainbow. */
-  danMedal: 0 | 1 | 2 | 3;
 }
 
 /** Anything that can draw one frame of the play at a given song time. */
@@ -1061,7 +1054,7 @@ export class TaikoRenderer implements FrameRenderer {
     }
   }
 
-  /** Player nameplate from the 12-row NamePlate sheet (see SkinLayout.nameplate), plus text. */
+  /** Player nameplate: "1P" badge + plate + name (12-row NamePlate sheet, see SkinLayout.nameplate). */
   private drawNameplate(ctx: Ctx2D): void {
     const info = this.opts.nameplate;
     const im = this.img('nameplate');
@@ -1081,47 +1074,54 @@ export class TaikoRenderer implements FrameRenderer {
     const [x, by] = L.nameplate;
     const px = x + L.nameplatePlateOffset * k; // plate starts right of the badge's centre
     const y = by + (rowH * bs - rowH * sy) / 2; // plate vertically centred on the badge
-    const row = (r: number, dx = px) => ctx.drawImage(im, 0, r * rowH, w, rowH, dx, y, w * s, rowH * sy);
+    const row = (r: number) => ctx.drawImage(im, 0, r * rowH, w, rowH, px, y, w * s, rowH * sy);
 
     row(3); // plate
-    if (info.title && info.titleType) row(4 + info.titleType); // 5 gold, 6 purple
-    if (info.dan) {
-      row(7); // dan plate
-      if (info.danMedal) row(7 + info.danMedal); // 8 silver, 9 gold, 10 rainbow
-    }
     if (L.nameplateOutline) row(4); // outline
     ctx.drawImage(im, 0, 0, rowH, rowH, x, by, rowH * bs, rowH * bs); // "1P" badge
+    this.drawNameText(ctx, info.name, px + 110 * k, y + 28 * ky, 22 * ky, 190 * k, 4 * ky);
+  }
 
-    const font = this.skin.fontFamily;
-    const text = (s: string, cx: number, cy: number, size: number, maxW: number, fill: string, stroke = '') => {
-      if (!s) return;
-      ctx.save();
-      ctx.font = `${size}px ${font}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round';
-      const mw = ctx.measureText(s).width;
-      ctx.translate(cx, cy);
-      if (mw > maxW) ctx.scale(maxW / mw, 1);
-      if (stroke) {
-        ctx.lineWidth = size / 4;
-        ctx.strokeStyle = stroke;
-        ctx.strokeText(s, 0, 0);
-      }
-      ctx.fillStyle = fill;
-      ctx.fillText(s, 0, 0);
-      ctx.restore();
-    };
-    text(info.title, px + 110 * k, y + 15 * ky, 15 * ky, 190 * k, info.titleType ? '#000' : '#333');
-    if (info.dan) {
-      // Left part of the dan plate (the medal sits on its right part).
-      text(info.dan, px + 30 * k, y + 38 * ky, 15 * ky, 44 * k, '#fff', info.danMedal ? '#000' : '');
-      text(info.name, px + 152 * k, y + 38 * ky, 22 * ky, 112 * k, '#fff', '#000');
-    } else {
-      // Without a title strip the name sits in the middle of the plate (bigger, as in the arcade).
-      const hasTitle = !!(info.title && info.titleType);
-      text(info.name, px + 110 * k, y + (hasTitle ? 38 : 28) * ky, (hasTitle ? 20 : 22) * ky, 190 * k, '#fff', '#000');
-    }
+  private drawNameText(ctx: Ctx2D, s: string, cx: number, cy: number, size: number, maxW: number, stroke: number) {
+    if (!s) return;
+    ctx.save();
+    ctx.font = `${size}px ${this.skin.fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    const mw = ctx.measureText(s).width;
+    ctx.translate(cx, cy);
+    if (mw > maxW) ctx.scale(maxW / mw, 1);
+    ctx.lineWidth = stroke;
+    ctx.strokeStyle = '#000';
+    ctx.strokeText(s, 0, 0);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(s, 0, 0);
+    ctx.restore();
+  }
+
+  /**
+   * Nijiiro arcade nameplate, measured from arcade footage at 720p (numbers are
+   * 720p pixels relative to the badge's top-left): white rounded plate
+   * 31..213 × 0..47 with a 2px border, the name centred, the "1P" badge from
+   * the NamePlate sheet on top.
+   */
+  private drawArcadeNameplate(ctx: Ctx2D, info: NameplateInfo, sheet: ImageSource): void {
+    const L = this.skin.manifest.layout;
+    const u = this.height / 720;
+    const [bx, by] = L.nameplate;
+    const h = 47 * u;
+    ctx.beginPath();
+    ctx.roundRect(bx + 31 * u, by, 182 * u, h, h / 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.lineWidth = 2 * u;
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+    this.drawNameText(ctx, info.name, bx + 122 * u, by + 24 * u, 21 * u, 160 * u, 4 * u);
+    const rowH = sheet.height / 12;
+    const bs = L.nameplateBadgeScale;
+    ctx.drawImage(sheet, 0, 0, rowH, rowH, bx, by, rowH * bs, rowH * bs); // "1P" badge
   }
 
   private drawScoreDigits(ctx: Ctx2D, key: ImageKey, value: number, x0: number, bottom: number, scaleY = 1) {
@@ -1179,125 +1179,6 @@ export class TaikoRenderer implements FrameRenderer {
       this.drawScoreDigits(ctx, 'scoreAdd', delta, L.scoreAdd[0] + xAdd * k, L.scoreAdd[1] + yAdd * k);
       ctx.globalAlpha = 1;
     }
-  }
-
-  /**
-   * Nijiiro arcade nameplate, measured from arcade footage at 720p (all
-   * numbers below are 720p pixels relative to the badge's top-left):
-   * rounded plate 31..213 × 0..47 with a 2px border; with a title, the top half
-   * is a gold strip under a black divider; with a dan, the bottom-left holds a
-   * dark section with a silver pill; the name fills the rest. Badge on top.
-   */
-  private drawArcadeNameplate(ctx: Ctx2D, info: NameplateInfo, sheet: ImageSource): void {
-    const L = this.skin.manifest.layout;
-    const u = this.height / 720;
-    const [bx, by] = L.nameplate;
-    const X = (v: number) => bx + v * u;
-    const Y = (v: number) => by + v * u;
-    const font = this.skin.fontFamily;
-    const hasTitle = !!info.title;
-    const hasDan = !!info.dan;
-
-    const plate = () => {
-      const x = X(31);
-      const y = Y(0);
-      const w = 182 * u;
-      const h = 47 * u;
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, h / 2);
-    };
-
-    // Plate body
-    ctx.save();
-    plate();
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.clip();
-    if (hasTitle) {
-      if (info.titleType) {
-        const g = ctx.createLinearGradient(X(31), 0, X(213), 0);
-        if (info.titleType === 2) {
-          g.addColorStop(0, '#7b2ff7');
-          g.addColorStop(0.5, '#d8b4ff');
-          g.addColorStop(1, '#9b5cf6');
-        } else {
-          g.addColorStop(0, '#b8860b');
-          g.addColorStop(0.35, '#f4c430');
-          g.addColorStop(0.75, '#ffe680');
-          g.addColorStop(1, '#fff3b0');
-        }
-        ctx.fillStyle = g;
-        ctx.fillRect(X(31), Y(0), 182 * u, 22 * u);
-        // faceted sheen
-        ctx.fillStyle = 'rgba(255,255,255,0.18)';
-        for (let i = 0; i < 12; i++) {
-          const cx = X(40 + i * 16);
-          ctx.beginPath();
-          ctx.moveTo(cx, Y(1));
-          ctx.lineTo(cx + 8 * u, Y(11));
-          ctx.lineTo(cx, Y(21));
-          ctx.lineTo(cx - 8 * u, Y(11));
-          ctx.closePath();
-          if (i % 2) ctx.fill();
-        }
-      }
-      ctx.fillStyle = '#000';
-      ctx.fillRect(X(31), Y(22), 182 * u, 2 * u);
-    }
-    if (hasDan) {
-      const top = hasTitle ? 24 : 0;
-      ctx.fillStyle = '#0a0000';
-      ctx.fillRect(X(31), Y(top), (89 - 31) * u, (47 - top) * u);
-      // silver pill
-      const py = hasTitle ? 25 : 12;
-      const ph = 19 * u;
-      const g = ctx.createLinearGradient(0, Y(py), 0, Y(py) + ph);
-      g.addColorStop(0, '#f2f3f3');
-      g.addColorStop(0.5, '#c9caca');
-      g.addColorStop(1, '#55574f');
-      ctx.beginPath();
-      ctx.roundRect(X(47), Y(py), 35 * u, ph, ph / 2);
-      ctx.fillStyle = g;
-      ctx.fill();
-    }
-    ctx.restore();
-
-    // Border
-    plate();
-    ctx.lineWidth = 2 * u;
-    ctx.strokeStyle = '#000';
-    ctx.stroke();
-
-    const text = (s: string, cx: number, cy: number, size: number, maxW: number, fill: string, stroke: string, sw: number) => {
-      if (!s) return;
-      ctx.save();
-      ctx.font = `${size}px ${font}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round';
-      const mw = ctx.measureText(s).width;
-      ctx.translate(cx, cy);
-      if (mw > maxW) ctx.scale(maxW / mw, 1);
-      if (stroke) {
-        ctx.lineWidth = sw;
-        ctx.strokeStyle = stroke;
-        ctx.strokeText(s, 0, 0);
-      }
-      ctx.fillStyle = fill;
-      ctx.fillText(s, 0, 0);
-      ctx.restore();
-    };
-    if (hasTitle) text(info.title, X(122), Y(12), 16 * u, 150 * u, '#000', '', 0);
-    if (hasDan) text(info.dan, X(64.5), Y(hasTitle ? 35 : 21.5), 14 * u, 30 * u, '#fff', '#000', 3 * u);
-    const nameCx = hasDan ? X(151) : X(122);
-    const nameCy = hasTitle ? Y(35) : Y(24);
-    const nameMax = (hasDan ? 116 : 160) * u;
-    text(info.name, nameCx, nameCy, (hasTitle ? 16 : 21) * u, nameMax, '#fff', '#000', (hasTitle ? 3 : 4) * u);
-
-    // "1P" badge from the sheet, on top
-    const rowH = sheet.height / 12;
-    const bs = L.nameplateBadgeScale;
-    ctx.drawImage(sheet, 0, 0, rowH, rowH, bx, by, rowH * bs, rowH * bs);
   }
 
   private drawGauge(ctx: Ctx2D, t: number): void {

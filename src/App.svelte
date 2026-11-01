@@ -56,14 +56,10 @@
   })();
   let showNameplate = $state<boolean>(npSaved?.show ?? true);
   let npName = $state<string>(npSaved?.name ?? 'Player');
-  let npTitle = $state<string>(npSaved?.title ?? '');
-  let npDan = $state<string>(npSaved?.dan ?? '');
-  let npTitleType = $state<0 | 1 | 2>(npSaved?.titleType ?? 1);
-  let npDanMedal = $state<0 | 1 | 2 | 3>(npSaved?.danMedal ?? 2);
   $effect(() => {
     localStorage.setItem(
       NP_KEY,
-      JSON.stringify({ show: showNameplate, name: npName, title: npTitle, dan: npDan, titleType: npTitleType, danMedal: npDanMedal }),
+      JSON.stringify({ show: showNameplate, name: npName }),
     );
   });
   let maxJudgeTexts = $state(2);
@@ -202,7 +198,7 @@
     maxHitEffects,
     maxScoreAdds,
     nameplate: showNameplate
-      ? { name: npName, title: npTitle, dan: npDan, titleType: npTitleType, danMedal: npDanMedal }
+      ? { name: npName }
       : undefined,
     intro: timeline.intro,
     title: titleOverride || parsed?.meta.title || '',
@@ -532,28 +528,7 @@
         <input type="checkbox" bind:checked={showNameplate} disabled={!!skin && !skin.images.nameplate} /> 네임플레이트 표시
         {#if skin && !skin.images.nameplate}<small class="hint">(이 스킨에는 네임플레이트가 없음)</small>{/if}
       </label>
-      <div class="grid">
-        <label>이름 <input type="text" bind:value={npName} disabled={!showNameplate} /></label>
-        <label>칭호 <input type="text" bind:value={npTitle} disabled={!showNameplate} /></label>
-        <label>단위 <input type="text" placeholder="예: 十段" bind:value={npDan} disabled={!showNameplate} /></label>
-        <label>
-          칭호 색
-          <select bind:value={npTitleType} disabled={!showNameplate}>
-            <option value={0}>없음</option>
-            <option value={1}>금색</option>
-            <option value={2}>보라색</option>
-          </select>
-        </label>
-        <label>
-          단위 메달
-          <select bind:value={npDanMedal} disabled={!showNameplate}>
-            <option value={0}>없음</option>
-            <option value={1}>은</option>
-            <option value={2}>금</option>
-            <option value={3}>무지개</option>
-          </select>
-        </label>
-      </div>
+      <label>이름 <input type="text" bind:value={npName} disabled={!showNameplate} /></label>
 
       <h2>4. 스킨</h2>
       <p class="hint">{skinStatus}</p>
