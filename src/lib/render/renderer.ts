@@ -295,6 +295,8 @@ export class TaikoRenderer implements FrameRenderer {
   private drawPlay(ctx: Ctx2D, t: number): void {
     this.drawBackground(ctx, t);
     this.drawLane(ctx, t);
+    // Lane frame (black borders) goes under bar lines, effects and notes, so hit effects overlap it.
+    this.draw(ctx, 'taikoFrame', this.skin.manifest.layout.taikoFrame[0], this.skin.manifest.layout.taikoFrame[1]);
     this.drawBars(ctx, t);
     this.drawJudgeCircle(ctx);
     this.drawGogoFire(ctx, t);
@@ -909,7 +911,6 @@ export class TaikoRenderer implements FrameRenderer {
   private drawTaikoPanel(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
     this.draw(ctx, 'taikoBackground', L.taikoBackground[0], L.taikoBackground[1]);
-    this.draw(ctx, 'taikoFrame', L.taikoFrame[0], L.taikoFrame[1]);
 
     // Drum + per-side flashes.
     const [tx, ty] = L.taiko;
