@@ -213,6 +213,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
   layout: OPENTAIKO_LAYOUT,
   hitEffect: { dir: `${G}/10_Effects/Hit` },
   gaugeRainbow: { dir: `${G}/7_Gauge/Rainbow` },
+  mob: { dir: `${G}/3_Mob` },
   endAnim: { dir: `${G}/9_End` },
 };
 

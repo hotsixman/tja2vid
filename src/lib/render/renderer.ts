@@ -10,6 +10,8 @@ export interface RenderOptions {
   showTitle: boolean;
   /** Draw the skin's dancers (if it has any). Defaults to true. */
   showDancer?: boolean;
+  /** Mob (crowd) variant shown behind the dancers at full gauge; -1 hides it. Defaults to 0. */
+  mobIndex?: number;
   /** Genre plate under the in-game title; omitted or empty text = not drawn. */
   genre?: { text: string; background: string; color: string };
   /** Song time when the song has completely finished (end of the audio); the result animation starts then. */
@@ -165,6 +167,8 @@ export class TaikoRenderer implements FrameRenderer {
   private readonly laneFlashes: { hits: Hit[]; key: ImageKey }[];
   private readonly rollByNote = new Map<number, RollState>();
   private readonly clearTime: number;
+  /** Song time the soul gauge first reaches 100 (mob appears). */
+  private readonly fullGaugeTime: number | undefined;
   private readonly strips = new Map<string, OffscreenCanvas | null>();
   /** BPM change points with cumulative beat count, for beat-synced animation. */
   private readonly beatPoints: { time: number; bpm: number; beats: number }[];
@@ -187,6 +191,7 @@ export class TaikoRenderer implements FrameRenderer {
     this.beatPoints = buildBeatPoints(play);
     const g = play.gauge.find((s) => s.value >= play.clearThreshold);
     this.clearTime = g ? g.time : Infinity;
+    this.fullGaugeTime = play.gauge.find((s) => s.value >= 100)?.time;
     play.judgements.forEach((j, k) => {
       if (k + 1 === 50 || k + 1 === 300) this.faceLagStarts.push(j.time);
     });
@@ -1001,6 +1006,7 @@ export class TaikoRenderer implements FrameRenderer {
       }
       ctx.globalAlpha = 1;
     }
+    this.drawMob(ctx, t);
     if (this.opts.showDancer !== false) this.drawDancers(ctx, t);
     const footer = this.img('footer');
     if (footer) ctx.drawImage(footer, 0, this.height - footer.height);
@@ -1051,6 +1057,7 @@ export class TaikoRenderer implements FrameRenderer {
       ctx.globalAlpha = 1;
     }
 
+    this.drawMob(ctx, t);
     if (this.opts.showDancer !== false) this.drawDancers(ctx, t);
 
     // Footer, bottom-aligned.
@@ -1071,6 +1078,28 @@ export class TaikoRenderer implements FrameRenderer {
     }
     const p = pts[lo];
     return p.beats + ((t - p.time) * Math.abs(p.bpm)) / 60000;
+  }
+
+  /**
+   * TJAPlayer3 mob (CAct演奏DrumsMob): while the soul gauge is full, the crowd
+   * stands at the bottom of the screen (70px of it hidden at 720p) and hops
+   * 70px every `beat` beats along |sin|, landing on the beat. It rises in
+   * from below over 400ms when the gauge first fills.
+   */
+  private drawMob(ctx: Ctx2D, t: number): void {
+    const mob = this.skin.mob;
+    const idx = this.opts.mobIndex ?? 0;
+    if (!mob || idx < 0) return;
+    const im = mob.images[Math.min(idx, mob.images.length - 1)];
+    if (!im || this.fullGaugeTime === undefined || t < this.fullGaugeTime) return;
+    if (stepAt(this.play.gauge, t) < 100) return;
+    const u = this.height / 720;
+    const cycle = this.beatsAt(t) / Math.max(1e-6, mob.beat);
+    const hop = Math.abs(Math.sin((cycle - Math.floor(cycle)) * Math.PI)) * 70 * u;
+    const rise = Math.min(1, (t - this.fullGaugeTime) / 400);
+    const enter = (1 - (1 - rise) * (1 - rise)) * (im.height - 70 * u);
+    const y = this.height - enter - hop * rise;
+    ctx.drawImage(im, 0, y);
   }
 
   /** OpenTaiko dancers: one motion cycle every `beat` beats, shown once the gauge reaches their threshold. */

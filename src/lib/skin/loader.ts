@@ -297,6 +297,8 @@ async function resolveManifest(resolve: SkinFileResolver, base: SkinManifest): P
     if (efm > 0) manifest.endAnim.frameMs = efm;
     if (elm > 0) manifest.endAnim.loopFrameMs = elm;
   }
+  const mobBeat = parseFloat(ini.Game_Mob_Beat ?? '');
+  if (manifest.mob && mobBeat > 0) manifest.mob.beat = mobBeat;
   manifest.dancer = await detectDancer(resolve, ini);
   manifest.character = await detectCharacter(resolve, ini, resolution);
   manifest.font = detectFont(resolve);
@@ -497,7 +499,7 @@ export async function loadSkin(
     })(),
   ]);
 
-  const [dancer, character, hitEffect, gaugeRainbow, endAnim] = await Promise.all([
+  const [dancer, character, hitEffect, gaugeRainbow, endAnim, mob] = await Promise.all([
     manifest.dancer ? loadDancer(resolve, manifest.dancer).catch(() => undefined) : undefined,
     manifest.character
       ? loadCharacter(resolve, manifest.character, manifest.resolution).catch(() => undefined)
@@ -509,6 +511,11 @@ export async function loadSkin(
           .catch(() => undefined)
       : undefined,
     manifest.endAnim ? loadEndAnim(resolve, manifest).catch(() => undefined) : undefined,
+    manifest.mob
+      ? loadFrames(resolve, manifest.mob.dir)
+          .then((images) => (images.length ? { images, beat: manifest.mob!.beat ?? 1 } : undefined))
+          .catch(() => undefined)
+      : undefined,
   ]);
 
   // TJAPlayer3 skins split Judge.png into 60px rows (at 720p) instead of 5 equal rows.
@@ -517,7 +524,7 @@ export async function loadSkin(
     manifest.layout.judgeRows = Math.max(1, Math.round(images.judge.height / rowH));
   }
 
-  return { manifest, images, sounds, fontFamily, dancer, character, hitEffect, gaugeRainbow, endAnim, layerImages };
+  return { manifest, images, sounds, fontFamily, dancer, character, hitEffect, gaugeRainbow, endAnim, mob, layerImages };
 }
 
 /** Loads frames `<dir>/<i>.png`, probing in parallel chunks when the count is unknown. */

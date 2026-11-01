@@ -277,6 +277,12 @@ export interface SkinManifest {
   /** Rainbow gauge frames shown when the gauge is full: `<dir>/0.png …` (OpenTaiko 7_Gauge/Rainbow). */
   gaugeRainbow?: { dir: string; frameMs?: number };
   /**
+   * Mob (crowd) shown behind the dancers while the soul gauge is full
+   * (TJAPlayer3 3_Mob): `<dir>/0.png, 1.png, …` are alternative crowds.
+   * They bounce 70px (at 720p) once every `beat` beats.
+   */
+  mob?: { dir: string; beat?: number };
+  /**
    * Data-driven background. When present it replaces the built-in
    * OpenTaiko-style background (the bgUp… and bgDown… images).
    */
@@ -444,6 +450,7 @@ export interface LoadedSkin {
   character?: LoadedCharacter;
   hitEffect?: { great: ImageSource[]; greatBig: ImageSource[]; frameMs: number };
   gaugeRainbow?: { frames: ImageSource[]; frameMs: number };
+  mob?: { images: ImageSource[]; beat: number };
   endAnim?: LoadedEndAnim;
   /** Images used by background layers, keyed by BackgroundLayer.image. */
   layerImages: Record<string, ImageSource>;

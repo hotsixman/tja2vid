@@ -45,6 +45,7 @@
   let hitVolume = $state(0.7);
   let showTitle = $state(true);
   let showDancer = $state(true);
+  let mobIndex = $state(0);
   let showCharacter = $state(true);
   // Nameplate (remembered in localStorage)
   const NP_KEY = 'tja2vid.nameplate';
@@ -216,6 +217,7 @@
   const renderOpts = $derived({
     showTitle,
     showDancer,
+    mobIndex,
     showCharacter,
     maxJudgeTexts,
     maxHitEffects,
@@ -593,6 +595,16 @@
       <label class="check">
         <input type="checkbox" bind:checked={showDancer} disabled={!skin?.dancer} /> 댄서 표시
         {#if skin && !skin.dancer}<small class="hint">(이 스킨에는 댄서가 없음)</small>{/if}
+      </label>
+      <label>
+        몹 (혼 게이지 MAX 시 댄서 뒤 관객)
+        <select bind:value={mobIndex} disabled={!skin?.mob}>
+          <option value={-1}>표시 안 함</option>
+          {#each skin?.mob?.images ?? [] as _, i (i)}
+            <option value={i}>{i + 1}번</option>
+          {/each}
+        </select>
+        {#if skin && !skin.mob}<small class="hint">(이 스킨에는 몹이 없음)</small>{/if}
       </label>
 
       <h2>장르 표시</h2>
