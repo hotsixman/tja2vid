@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Preview from './lib/components/Preview.svelte';
+  import BusyModal, { type BusyState } from './lib/components/BusyModal.svelte';
   import { decodeTja, ENCODINGS, type TjaEncoding } from './lib/tja/decode';
   import { buildCourse, parseTja } from './lib/tja/parser';
   import type { Branch, ParsedTja } from './lib/tja/types';
@@ -43,6 +44,36 @@
   let hitVolume = $state(0.7);
   let showTitle = $state(true);
   let showDancer = $state(true);
+  let showCharacter = $state(true);
+  let showIntro = $state(true);
+  let introSec = $state(3);
+
+  // ---------------------------------------------------------------- busy modal
+  // Long-running work registers a task; the newest one is shown in a modal that blocks the UI.
+  let tasks = $state<(BusyState & { id: number })[]>([]);
+  let taskSeq = 0;
+  const busy = $derived(tasks.length ? tasks[tasks.length - 1] : null);
+  function beginTask(s: BusyState) {
+    const id = ++taskSeq;
+    tasks.push({ ...s, id });
+    return {
+      update(p: Partial<BusyState>) {
+        const t = tasks.find((x) => x.id === id);
+        if (t) Object.assign(t, p);
+      },
+      end() {
+        tasks = tasks.filter((x) => x.id !== id);
+      },
+    };
+  }
+  async function withTask<T>(title: string, work: Promise<T> | (() => Promise<T>)): Promise<T> {
+    const task = beginTask({ title });
+    try {
+      return await (typeof work === 'function' ? work() : work);
+    } finally {
+      task.end();
+    }
+  }
   let titleOverride = $state('');
   let subtitleOverride = $state('');
   let preRollSec = $state(2);
@@ -59,7 +90,7 @@
   async function useSkin(promise: Promise<LoadedSkin>, label: string): Promise<boolean> {
     skinStatus = `${label} 불러오는 중…`;
     try {
-      const s = await promise;
+      const s = await withTask(`스킨 불러오는 중… (${label})`, promise);
       const total = Object.keys(s.manifest.images).length;
       const missing = missingImages(s);
       if (total > 0 && missing.length === total) {
@@ -135,19 +166,19 @@
           preRollMs: preRollSec * 1000,
           tailMs: 3000,
           endMode,
+          introMs: showIntro ? Math.max(0.5, introSec) * 1000 : 0,
         })
       : { leadInMs: 0, durationMs: 1000 },
   );
-  const renderer = $derived(
-    skin && play && parsed
-      ? new TaikoRenderer(skin, play, {
-          showTitle,
-        showDancer,
-          title: titleOverride || parsed.meta.title,
-          subtitle: subtitleOverride || parsed.meta.subtitle,
-        })
-      : null,
-  );
+  const renderOpts = $derived({
+    showTitle,
+    showDancer,
+    showCharacter,
+    intro: timeline.intro,
+    title: titleOverride || parsed?.meta.title || '',
+    subtitle: subtitleOverride || parsed?.meta.subtitle || '',
+  });
+  const renderer = $derived(skin && play && parsed ? new TaikoRenderer(skin, play, renderOpts) : null);
 
   // Pick Oni by default when a new file is loaded.
   $effect(() => {
@@ -175,6 +206,7 @@
     const version = ++mixVersion;
     mixing = true;
     const timer = setTimeout(async () => {
+      const task = beginTask({ title: '오디오 준비 중…', detail: '음원과 타격음을 합치고 있습니다.' });
       try {
         const buf = await mixSoundtrack(m, s, p, {
           sampleRate: SAMPLE_RATE,
@@ -187,6 +219,7 @@
       } catch (e) {
         console.error(e);
       } finally {
+        task.end();
         if (version === mixVersion) mixing = false;
       }
     }, 250);
@@ -214,7 +247,7 @@
     audioName = f.name;
     audioError = '';
     try {
-      music = await decodeAudio(await f.arrayBuffer(), SAMPLE_RATE);
+      music = await withTask('음원 디코딩 중…', async () => decodeAudio(await f.arrayBuffer(), SAMPLE_RATE));
     } catch (e) {
       music = null;
       audioError = `오디오 디코딩 실패: ${(e as Error).message}`;
@@ -235,6 +268,7 @@
   function onDrop(e: DragEvent) {
     e.preventDefault();
     dragging = false;
+    if (busy) return;
     void handleFiles(e.dataTransfer?.files ?? null);
   }
 
@@ -256,7 +290,9 @@
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     downloadUrl = '';
     abort = new AbortController();
+    const ctrl = abort;
     const started = performance.now();
+    const task = beginTask({ title: '영상 만드는 중…', detail: '오디오 믹싱 중…', onCancel: () => ctrl.abort() });
     try {
       const track = await mixSoundtrack(music, skin, play, {
         sampleRate: SAMPLE_RATE,
@@ -265,13 +301,9 @@
         leadInMs: timeline.leadInMs,
         durationMs: timeline.durationMs,
       });
-      const r = new TaikoRenderer(skin, play, {
-        showTitle,
-        showDancer,
-        title: titleOverride || parsed.meta.title,
-        subtitle: subtitleOverride || parsed.meta.subtitle,
-      });
+      const r = new TaikoRenderer(skin, play, renderOpts);
       exportStatus = '렌더링 / 인코딩 중…';
+      task.update({ detail: exportStatus, progress: 0 });
       const result = await exportVideo(r, {
         fps,
         width: res.w,
@@ -286,6 +318,7 @@
           const elapsed = (performance.now() - started) / 1000;
           const eta = progress > 0 ? elapsed / progress - elapsed : 0;
           exportStatus = `렌더링 / 인코딩 중… ${done}/${total} 프레임 · 남은 시간 약 ${Math.ceil(eta)}초`;
+          task.update({ detail: `${done}/${total} 프레임 · 남은 시간 약 ${Math.ceil(eta)}초`, progress });
         },
       });
       downloadUrl = URL.createObjectURL(result.blob);
@@ -300,6 +333,7 @@
       exportStatus = (e as Error).name === 'AbortError' ? '취소되었습니다.' : `오류: ${(e as Error).message}`;
       console.error(e);
     } finally {
+      task.end();
       exporting = false;
       abort = null;
     }
@@ -324,7 +358,9 @@
   ondrop={onDrop}
 />
 
-<main class:dragging>
+<BusyModal {busy} />
+
+<main class:dragging inert={!!busy}>
   <header>
     <h1>tja2vid</h1>
     <p>TJA 채보와 음원을 넣으면 태고 스타일 오토플레이 영상을 만들어 줍니다. 모든 처리는 브라우저 안에서 이루어집니다.</p>
@@ -435,6 +471,16 @@
       </div>
       <label class="check"><input type="checkbox" bind:checked={showTitle} /> 곡 제목 표시</label>
       <label class="check">
+        <input type="checkbox" bind:checked={showCharacter} disabled={!skin?.character} /> 캐릭터 표시
+        {#if skin && !skin.character}<small class="hint">(이 스킨에는 캐릭터가 없음)</small>{/if}
+      </label>
+      <div class="row">
+        <label class="check"><input type="checkbox" bind:checked={showIntro} /> 시작 전 로딩 화면</label>
+        <label class="inline">
+          <input type="number" min="0.5" max="10" step="0.5" bind:value={introSec} disabled={!showIntro} style="width: 4.5em" /> 초
+        </label>
+      </div>
+      <label class="check">
         <input type="checkbox" bind:checked={showDancer} disabled={!skin?.dancer} /> 댄서 표시
         {#if skin && !skin.dancer}<small class="hint">(이 스킨에는 댄서가 없음)</small>{/if}
       </label>
@@ -463,7 +509,7 @@
 
     <section class="panel main">
       <Preview {renderer} {soundtrack} leadInMs={timeline.leadInMs} durationMs={timeline.durationMs} />
-      {#if mixing}<p class="hint">오디오 준비 중…</p>{/if}
+
 
       <div class="export">
         {#if !exportSupported}
@@ -473,10 +519,8 @@
           <button class="primary" onclick={startExport} disabled={!renderer || exporting || !exportSupported}>
             영상 만들기 ({RESOLUTIONS[resolutionIndex].label.split(' ')[0]}, {fps}fps)
           </button>
-          {#if exporting}<button onclick={() => abort?.abort()}>취소</button>{/if}
           {#if downloadUrl}<a class="button" href={downloadUrl} download={downloadName}>⬇ 다운로드</a>{/if}
         </div>
-        {#if exporting}<progress value={progress} max="1"></progress>{/if}
         {#if exportStatus}<p class="hint">{exportStatus}</p>{/if}
         {#if downloadUrl}
           <!-- svelte-ignore a11y_media_has_caption -->
@@ -539,9 +583,11 @@
     gap: 0.25rem;
     font-size: 0.9rem;
   }
-  label.check {
+  label.check,
+  label.inline {
     flex-direction: row;
     align-items: center;
+    gap: 0.4rem;
   }
   .grid {
     display: grid;
@@ -596,9 +642,6 @@
     flex-direction: column;
     gap: 0.5rem;
     margin-top: 0.5rem;
-  }
-  progress {
-    width: 100%;
   }
   video {
     width: 100%;

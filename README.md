@@ -8,7 +8,9 @@ Svelte 5 + Vite로 만들었고, 모든 처리(채보 해석, 렌더링, 인코�
 - TJA 해석: `#BPMCHANGE`, `#SCROLL`, `#MEASURE`, `#DELAY`, `#GOGOSTART/END`, `#BARLINEON/OFF`, 분기(`#BRANCHSTART`, `#N/#E/#M`), 풍선(`BALLOON`, `BALLOONNOR/EXP/MAS`), 여러 난이도, `#START P1/P2`
 - 인코딩 자동 감지 (BOM → UTF-8 → Shift_JIS), 수동 선택 가능 (EUC-KR/CP949, GB18030 등)
 - 오토플레이 시뮬레이션: 판정, 콤보, 점수, 게이지, 연타/풍선 (연타 속도 조절)
-- 화면: 노트 + 노트 아래 문구, 마디선, 판정, 폭발 이펙트, 날아가는 노트, 레인 플래시, 북 타격, 콤보, 점수, 난이도, 클리어 게이지와 혼, GOGO 타임, 연타/풍선 카운터, 배경, 댄서, 곡 제목
+- 화면: 노트 + 노트 아래 문구, 마디선, 판정, 폭발 이펙트, 날아가는 노트, 레인 플래시, 북 타격, 콤보, 점수, 난이도, 클리어 게이지와 혼, GOGO 타임, 연타/풍선 카운터, 배경, 댄서, 캐릭터, 곡 제목
+- 플레이 전 곡 로딩 화면 (옵션, 길이 조절)
+- 시간이 걸리는 작업(스킨·음원 불러오기, 오디오 준비, 영상 만들기) 중에는 진행 상황 창이 떠서 다른 조작을 막습니다
 - 실시간 미리보기 (타격음 포함)
 - **60fps / 120fps** 선택, 720p ~ 4K 해상도, 화질 선택
 - WebCodecs로 인코딩: MP4 (H.264 + AAC/Opus), 지원하지 않는 브라우저에서는 WebM (VP9 + Opus)
@@ -51,7 +53,13 @@ zip/폴더 안의 스킨 루트(설정 파일이 있는 폴더)는 자동으로 
 
 1. **`skin.json`** — 기본 매니페스트 위에 덮어씁니다.
 2. **OpenTaiko 형식** (`GameConfig.ini` + `SkinConfig.ini`, `Graphics/5_Game/...`) — 1P 좌표를 적용합니다.
-3. **TJAPlayer3 형식** (`SkinConfig.ini`만 있는 옛 스킨, `#include` 지원) — OpenTaiko의 1280×720 기본값 위에 스킨 값을 적용하고, `5_Background/0/1P_Up_1st.png …` 배경과 `2_Dancer/<번호>/` 댄서도 자동으로 인식합니다.
+3. **TJAPlayer3 형식** (`SkinConfig.ini`만 있는 옛 스킨, `#include` 지원) — OpenTaiko의 1280×720 기본값 위에 스킨 값을 적용하고, `5_Background/0/1P_Up_1st.png …` 배경과 `2_Dancer/<번호>/` 댄서도 자동으로 인식합니다. `Judge.png`는 60px(720p 기준) 행으로 나눕니다.
+
+OpenTaiko / TJAPlayer3 형식에서는 다음도 자동으로 인식합니다.
+
+- **폰트:** `Fonts/` 폴더(또는 스킨 루트)의 `.otf` / `.ttf` / `.woff2` 파일을 곡 제목과 로딩 화면에 사용합니다.
+- **캐릭터:** `Graphics/5_Game/1_Chara/` 또는 `Graphics/11_Characters/<n>/` (+ `CharaConfig.txt`). Normal / Clear / GoGo 반복 동작과 `_Max`(게이지 MAX), 10콤보 · GOGO 시작 · 클리어 · 혼 MAX · 풍선 동작을 OpenTaiko 규칙대로 재생합니다.
+- **로딩 화면:** `Graphics/4_SongLoading/Bg.png · Chara.png · Plate.png`와 `SongLoading_*` 좌표.
 
 ### `skin.json` 예시
 

@@ -71,6 +71,9 @@ export const IMAGE_KEYS = [
   'bgDownClear',
   'bgDownScroll',
   'footer',
+  'loadingBackground',
+  'loadingChara',
+  'loadingPlate',
 ] as const;
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 
@@ -97,6 +100,8 @@ export interface SkinLayout {
   laneSub: XY;
   judge: XY;
   judgeMove: XY;
+  /** Rows in Judge.png (OpenTaiko: 5, TJAPlayer3: 4 rows of 60px at 720p). */
+  judgeRows: number;
   taikoBackground: XY;
   taikoFrame: XY;
   taiko: XY;
@@ -144,6 +149,16 @@ export interface SkinLayout {
   /** Background bands. */
   bgUpHeight: number;
   bgDownY: number;
+  /** Song loading screen: plate centre, title / subtitle centres, chara slide-in offset. */
+  loadingPlate: XY;
+  loadingTitle: XY;
+  loadingSubtitle: XY;
+  loadingTitleFontSize: number;
+  loadingSubtitleFontSize: number;
+  loadingCharaMove: XY;
+  /** Text colours for the loading screen title. */
+  loadingTitleColor: string;
+  loadingTitleStroke: string;
 }
 
 export interface SkinManifest {
@@ -160,6 +175,8 @@ export interface SkinManifest {
   credits?: string;
   /** Optional dancer set (OpenTaiko 2_Dancer format). */
   dancer?: DancerManifest;
+  /** Optional player character (OpenTaiko 1_Chara / 11_Characters format). */
+  character?: CharacterManifest;
   /**
    * Data-driven background. When present it replaces the built-in
    * OpenTaiko-style background (the bgUp… and bgDown… images).
@@ -224,6 +241,61 @@ export interface DancerConfig {
   gauge: number[];
 }
 
+/** Character animation states, named after OpenTaiko's folders. */
+export const CHARA_STATES = [
+  'Normal',
+  'Clear',
+  'Clear_Max',
+  'GoGo',
+  'GoGo_Max',
+  '10combo',
+  '10combo_Max',
+  'GoGoStart',
+  'GoGoStart_Max',
+  'Clearin',
+  'Soulin',
+  'Balloon_Breaking',
+  'Balloon_Broke',
+  'Balloon_Miss',
+] as const;
+export type CharaState = (typeof CHARA_STATES)[number];
+
+export interface CharaStateConfig {
+  /** Frame index sequence; defaults to 0..n-1. */
+  motion?: number[];
+  /**
+   * Loops: beats per cycle. One-shots: length in beats. Balloon states: length
+   * in seconds (as in OpenTaiko).
+   */
+  beat?: number;
+}
+
+/**
+ * A character in OpenTaiko's format: `<dir>/<State>/0.png, 1.png …` per state
+ * (see CHARA_STATES), plus an optional `<dir>/CharaConfig.txt`.
+ */
+export interface CharacterManifest {
+  dir: string;
+  x: number;
+  y: number;
+  /** Position while a balloon is being popped (defaults to x/y). */
+  balloonX?: number;
+  balloonY?: number;
+  /** Resolution the frames were drawn for; frames are scaled to the skin resolution. */
+  resolution?: [number, number];
+  states?: Partial<Record<CharaState, CharaStateConfig>>;
+}
+
+export interface LoadedCharacter {
+  x: number;
+  y: number;
+  /** Draw scale (skin resolution / character resolution). */
+  scale: number;
+  balloonX: number;
+  balloonY: number;
+  states: Partial<Record<CharaState, { frames: ImageSource[]; motion: number[]; beat: number }>>;
+}
+
 export interface LoadedDancer {
   config: DancerConfig;
   /** frames[dancerIndex][frameIndex] */
@@ -240,6 +312,7 @@ export interface LoadedSkin {
   /** CSS font-family to use for text. */
   fontFamily: string;
   dancer?: LoadedDancer;
+  character?: LoadedCharacter;
   /** Images used by background layers, keyed by BackgroundLayer.image. */
   layerImages: Record<string, ImageSource>;
 }

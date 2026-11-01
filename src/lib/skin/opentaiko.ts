@@ -22,6 +22,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   laneSub: [499, 488],
   judge: [554, 234],
   judgeMove: [0, 20],
+  judgeRows: 5,
   taikoBackground: [0, 276],
   taikoFrame: [495, 204],
   taiko: [303, 324],
@@ -65,6 +66,14 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   subtitleFontSize: 30,
   bgUpHeight: 288,
   bgDownY: 540,
+  loadingPlate: [960, 540],
+  loadingTitle: [960, 420],
+  loadingSubtitle: [960, 488],
+  loadingTitleFontSize: 46,
+  loadingSubtitleFontSize: 30,
+  loadingCharaMove: [375, -120],
+  loadingTitleColor: '#ffffff',
+  loadingTitleStroke: '#000000',
 };
 
 /**
@@ -139,6 +148,9 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     bgDownClear: `${BG}/Down/0/Down_Clear.png`,
     bgDownScroll: `${BG}/Down/0/Down_Scroll.png`,
     footer: `${G}/8_Footer/0.png`,
+    loadingBackground: 'Graphics/4_SongLoading/Bg.png',
+    loadingChara: 'Graphics/4_SongLoading/Chara.png',
+    loadingPlate: 'Graphics/4_SongLoading/Plate.png',
   },
   sounds: {
     don: 'Sounds/Taiko/dong.ogg',
@@ -161,6 +173,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   laneSub: [333, 326],
   judge: [364, 152],
   judgeMove: [0, 20],
+  judgeRows: 5,
   taikoBackground: [0, 184],
   taikoFrame: [329, 136],
   taiko: [205, 206],
@@ -204,6 +217,14 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   subtitleFontSize: 20,
   bgUpHeight: 192,
   bgDownY: 360,
+  loadingPlate: [640, 360],
+  loadingTitle: [640, 280],
+  loadingSubtitle: [640, 325],
+  loadingTitleFontSize: 31,
+  loadingSubtitleFontSize: 20,
+  loadingCharaMove: [250, -80],
+  loadingTitleColor: '#ffffff',
+  loadingTitleStroke: '#000000',
 };
 
 /**
@@ -238,6 +259,9 @@ const INI_PAIRS: [keyof SkinLayout, string, string?][] = [
   ['balloonNumber', 'Game_Balloon_Balloon_Number_X', 'Game_Balloon_Balloon_Number_Y'],
   ['rollFrame', 'Game_Balloon_Roll_Frame_X', 'Game_Balloon_Roll_Frame_Y'],
   ['rollNumber', 'Game_Balloon_Roll_Number_X', 'Game_Balloon_Roll_Number_Y'],
+  ['loadingPlate', 'SongLoading_Plate_X', 'SongLoading_Plate_Y'],
+  ['loadingTitle', 'SongLoading_Title_X', 'SongLoading_Title_Y'],
+  ['loadingSubtitle', 'SongLoading_SubTitle_X', 'SongLoading_SubTitle_Y'],
 ];
 const INI_VECTORS: [keyof SkinLayout, string][] = [
   ['noteSize', 'Game_Notes_Size'],
@@ -252,6 +276,7 @@ const INI_VECTORS: [keyof SkinLayout, string][] = [
   ['notesFlash', 'Game_Effect_NotesFlash'],
   ['balloonNumberSize', 'Game_Balloon_Number_Size'],
   ['balloonNumberInterval', 'Game_Balloon_Number_Interval'],
+  ['loadingCharaMove', 'SongLoading_Chara_Move'],
 ];
 
 /** Parses an OpenTaiko DancerConfig.txt onto a base config. */
@@ -307,6 +332,10 @@ export function applyOpenTaikoIni(
   }
   const pad = nums(game.Game_Score_Padding)[0];
   if (pad !== undefined) l.scorePadding = pad;
+  const tfs = nums(game.SongLoading_Title_FontSize)[0];
+  if (tfs !== undefined) l.loadingTitleFontSize = tfs;
+  const sfs = nums(game.SongLoading_SubTitle_FontSize)[0];
+  if (sfs !== undefined) l.loadingSubtitleFontSize = sfs;
   const sine = nums(game.Game_Effect_FlyingNotes_Sine)[0];
   if (sine !== undefined) l.flyingSine = sine;
 

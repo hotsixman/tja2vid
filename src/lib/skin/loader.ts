@@ -8,8 +8,12 @@ import {
   parseDancerConfig,
   parseIni,
 } from './opentaiko';
+import { CHARA_STATES } from './types';
 import type {
   BackgroundSpec,
+  CharacterManifest,
+  CharaState,
+  LoadedCharacter,
   DancerManifest,
   ImageKey,
   ImageSource,
@@ -115,6 +119,7 @@ const COUNT_KEYS = new Set<keyof SkinLayout>([
   'hitExplosionFrames',
   'gogoFireFrames',
   'rollFrameFrames',
+  'judgeRows',
 ]);
 
 /** Default layout for a resolution: OpenTaiko's 1080p values, or its 720p defaults scaled. */
@@ -125,7 +130,8 @@ export function defaultLayoutFor([w]: [number, number]): SkinLayout {
   if (k !== 1) {
     for (const [key, v] of Object.entries(out)) {
       if (COUNT_KEYS.has(key as keyof SkinLayout)) continue;
-      out[key] = Array.isArray(v) ? v.map((n: number) => Math.round(n * k)) : Math.round((v as number) * k);
+      if (Array.isArray(v)) out[key] = v.map((n: number) => Math.round(n * k));
+      else if (typeof v === 'number') out[key] = Math.round(v * k);
     }
     // gaugeCells / frame counts stay as-is; notesFlash's 3rd value is a frame count.
     (out.notesFlash as number[])[2] = OPENTAIKO_720_LAYOUT.notesFlash[2];
@@ -252,11 +258,12 @@ async function resolveManifest(resolve: SkinFileResolver, base: SkinManifest): P
   const gameIni = await readIni(resolve, 'GameConfig.ini');
   const skinIni = await readIni(resolve, 'SkinConfig.ini');
   if (!gameIni && !skinIni) return manifest;
+  const loadingIni = (await readIni(resolve, 'SongLoadingConfig.ini')) ?? {};
 
   // OpenTaiko / TJAPlayer3 format. OpenTaiko's own default resolution is 1280x720.
   manifest = structuredClone(OPENTAIKO_MANIFEST);
   delete manifest.font;
-  const ini = { ...(skinIni ?? {}), ...(gameIni ?? {}) };
+  const ini = { ...(skinIni ?? {}), ...loadingIni, ...(gameIni ?? {}) };
   const res = parseIni(`Resolution=${ini.Resolution ?? '1280,720'}`).Resolution.split(',').map(Number);
   const resolution: [number, number] = res.length >= 2 && res[0] > 0 ? [res[0], res[1]] : [1280, 720];
   const { layout } = applyOpenTaikoIni(defaultLayoutFor(resolution), ini, { Resolution: resolution.join(',') });
@@ -269,7 +276,113 @@ async function resolveManifest(resolve: SkinFileResolver, base: SkinManifest): P
     manifest.background = legacyBackground(resolution);
   }
   manifest.dancer = await detectDancer(resolve, ini);
+  manifest.character = await detectCharacter(resolve, ini, resolution);
+  manifest.font = detectFont(resolve);
+  if (!gameIni) legacySkins.add(manifest);
   return manifest;
+}
+
+/** Manifests resolved from TJAPlayer3-style skins (no GameConfig.ini). */
+const legacySkins = new WeakSet<SkinManifest>();
+
+/** A font file shipped with the skin: `Fonts/*.otf|ttf|woff2` or one at the root. */
+function detectFont(resolve: SkinFileResolver): string | undefined {
+  const files = resolve.list?.() ?? [];
+  const isFont = (f: string) => /\.(otf|ttf|woff2?)$/i.test(f);
+  return files.find((f) => f.startsWith('fonts/') && isFont(f)) ?? files.find((f) => !f.includes('/') && isFont(f));
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/_/g, '');
+
+/** Finds a character: TJAPlayer3 `5_Game/1_Chara/` or OpenTaiko `11_Characters/<n>/`. */
+async function detectCharacter(
+  resolve: SkinFileResolver,
+  ini: Record<string, string>,
+  resolution: [number, number],
+): Promise<CharacterManifest | undefined> {
+  const files = resolve.list?.() ?? [];
+  let dir: string | undefined;
+  if (files.length) {
+    if (files.includes(`${G}/1_Chara/normal/0.png`.toLowerCase())) dir = `${G}/1_Chara`;
+    else {
+      const hit = files.find((f) => /^graphics\/11_characters\/[^/]+\/normal\/0\.png$/.test(f));
+      if (hit) dir = 'Graphics/11_Characters/' + hit.split('/')[2];
+    }
+  } else if (await exists(resolve, `${G}/1_Chara/Normal/0.png`)) {
+    dir = `${G}/1_Chara`;
+  }
+  if (!dir) return undefined;
+
+  const cfg = { ...ini, ...((await readIni(resolve, `${dir}/CharaConfig.txt`)) ?? {}) };
+  const byNorm = new Map(Object.entries(cfg).map(([k, v]) => [norm(k), v]));
+  const first = (k: string) => {
+    const v = byNorm.get(norm(k));
+    const n = v ? parseFloat(v.split(',')[0]) : NaN;
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const list = (k: string) => {
+    const v = byNorm.get(norm(k));
+    const out = v ? v.split(',').map((s) => parseFloat(s)).filter((n) => Number.isFinite(n)) : [];
+    return out.length ? out : undefined;
+  };
+  const states: CharacterManifest['states'] = {};
+  for (const s of CHARA_STATES) {
+    states[s] = { motion: list(`Game_Chara_Motion_${s}`), beat: first(`Game_Chara_Beat_${s}`) };
+  }
+  const res = list('Chara_Resolution');
+  return {
+    dir,
+    x: first('Game_Chara_X') ?? 0,
+    y: first('Game_Chara_Y') ?? 0,
+    balloonX: first('Game_Chara_Balloon_X'),
+    balloonY: first('Game_Chara_Balloon_Y'),
+    resolution: res && res.length >= 2 ? [res[0], res[1]] : resolution,
+    states,
+  };
+}
+
+/** Default beats per state, from OpenTaiko (balloon states are in seconds). */
+const CHARA_DEFAULT_BEAT: Record<CharaState, number> = {
+  Normal: 1,
+  Clear: 2,
+  Clear_Max: 2,
+  GoGo: 2,
+  GoGo_Max: 2,
+  '10combo': 1.5,
+  '10combo_Max': 1.5,
+  GoGoStart: 1.5,
+  GoGoStart_Max: 1.5,
+  Clearin: 1.5,
+  Soulin: 1.5,
+  Balloon_Breaking: 0.6,
+  Balloon_Broke: 1,
+  Balloon_Miss: 1,
+};
+
+async function loadCharacter(
+  resolve: SkinFileResolver,
+  m: CharacterManifest,
+  skinRes: [number, number],
+): Promise<LoadedCharacter | undefined> {
+  const states: LoadedCharacter['states'] = {};
+  await Promise.all(
+    CHARA_STATES.map(async (s) => {
+      const frames = await loadFrames(resolve, `${m.dir}/${s}`);
+      if (!frames.length) return;
+      const cfg = m.states?.[s] ?? {};
+      const motion = (cfg.motion ?? frames.map((_, i) => i)).filter((i) => i >= 0 && i < frames.length);
+      states[s] = { frames, motion: motion.length ? motion : [0], beat: cfg.beat ?? CHARA_DEFAULT_BEAT[s] };
+    }),
+  );
+  if (!states.Normal) return undefined;
+  return {
+    x: m.x,
+    y: m.y,
+    balloonX: m.balloonX ?? m.x,
+    balloonY: m.balloonY ?? m.y,
+    scale: m.resolution ? skinRes[0] / m.resolution[0] : 1,
+    states,
+  };
 }
 
 // ------------------------------------------------------------------ loading
@@ -346,9 +459,20 @@ export async function loadSkin(
     })(),
   ]);
 
-  const dancer = manifest.dancer ? await loadDancer(resolve, manifest.dancer).catch(() => undefined) : undefined;
+  const [dancer, character] = await Promise.all([
+    manifest.dancer ? loadDancer(resolve, manifest.dancer).catch(() => undefined) : undefined,
+    manifest.character
+      ? loadCharacter(resolve, manifest.character, manifest.resolution).catch(() => undefined)
+      : undefined,
+  ]);
 
-  return { manifest, images, sounds, fontFamily, dancer, layerImages };
+  // TJAPlayer3 skins split Judge.png into 60px rows (at 720p) instead of 5 equal rows.
+  if (legacySkins.has(manifest) && images.judge) {
+    const rowH = 60 * (manifest.resolution[1] / 720);
+    manifest.layout.judgeRows = Math.max(1, Math.round(images.judge.height / rowH));
+  }
+
+  return { manifest, images, sounds, fontFamily, dancer, character, layerImages };
 }
 
 /** Loads frames `<dir>/<i>.png`, probing in parallel chunks when the count is unknown. */

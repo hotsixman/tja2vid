@@ -7,6 +7,8 @@
  * the renderer treats it like any other skin.
  */
 import type {
+  CharaState,
+  LoadedCharacter,
   BackgroundSpec,
   ImageKey,
   ImageSource,
@@ -49,6 +51,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   laneSub: [520, 490],
   judge: [527, 210],
   judgeMove: [0, 22],
+  judgeRows: 5,
   taikoBackground: [0, 282],
   taikoFrame: [512, 282],
   taiko: [320, 320],
@@ -92,6 +95,14 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   subtitleFontSize: 30,
   bgUpHeight: 282,
   bgDownY: 542,
+  loadingPlate: [960, 540],
+  loadingTitle: [960, 512],
+  loadingSubtitle: [960, 590],
+  loadingTitleFontSize: 68,
+  loadingSubtitleFontSize: 36,
+  loadingCharaMove: [0, 140],
+  loadingTitleColor: '#ffffff',
+  loadingTitleStroke: '#15121f',
 };
 
 const BACKGROUND: BackgroundSpec = {
@@ -912,6 +923,269 @@ function dancerFrames(hue: number, variant: number): OffscreenCanvas[] {
   return out;
 }
 
+// ------------------------------------------------------------------ loading screen
+
+function loadingBackground(): OffscreenCanvas {
+  const [c, ctx] = canvas(W, H);
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#2a1250');
+  g.addColorStop(0.55, '#7a1f6b');
+  g.addColorStop(1, '#ff6f61');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  // concentric rings
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  for (let r = 80; r < 1400; r += 70) {
+    ctx.lineWidth = 22;
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  const stars = starsTile();
+  for (let x = 0; x < W; x += stars.width) for (let y = 0; y < H; y += stars.height) ctx.drawImage(stars, x, y);
+  return c;
+}
+
+function loadingPlate(): OffscreenCanvas {
+  const [c, ctx] = canvas(W, H);
+  ctx.fillStyle = 'rgba(12,10,28,0.82)';
+  ctx.fillRect(0, 430, W, 220);
+  const g = ctx.createLinearGradient(0, 0, W, 0);
+  g.addColorStop(0, 'rgba(255,95,162,0)');
+  g.addColorStop(0.5, 'rgba(255,95,162,1)');
+  g.addColorStop(1, 'rgba(53,195,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 430, W, 6);
+  ctx.fillRect(0, 644, W, 6);
+  return c;
+}
+
+function loadingChara(): OffscreenCanvas {
+  const [c, ctx] = canvas(W, H);
+  const sets = [dancerFrames(330, 0)[1], dancerFrames(190, 1)[5], dancerFrames(45, 2)[2]];
+  ctx.drawImage(sets[1], 80, 700);
+  ctx.drawImage(sets[0], W / 2 - 130, 720);
+  ctx.drawImage(sets[2], W - 340, 700);
+  return c;
+}
+
+// ------------------------------------------------------------------ character
+
+/** "Hoshi", the built-in mascot: a star-shaped drummer. Pose is a function of the frame phase. */
+interface Pose {
+  hop: number;
+  squash: number;
+  rot: number;
+  armL: number;
+  armR: number;
+  eyes: 'open' | 'happy' | 'closed' | 'sad';
+  aura?: string;
+  sparkle?: number;
+  pump?: number;
+}
+
+function drawHoshi(ctx: C2D, p: Pose) {
+  const cx = 180;
+  const ground = 236;
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(cx, ground + 6, 70 - p.hop * 0.4, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.translate(cx, ground - 80 - p.hop);
+  ctx.rotate(p.rot);
+  ctx.scale(1 + p.squash, 1 - p.squash);
+  if (p.aura) {
+    const g = ctx.createRadialGradient(0, 0, 40, 0, 0, 120);
+    g.addColorStop(0, p.aura);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 120, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // arms with drumsticks
+  for (const [side, a] of [
+    [-1, p.armL],
+    [1, p.armR],
+  ] as const) {
+    ctx.save();
+    ctx.translate(side * 52, 4);
+    ctx.rotate(side * (0.4 + a));
+    ctx.strokeStyle = COLOR.outline;
+    ctx.lineWidth = 12;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(side * 34, -26);
+    ctx.stroke();
+    ctx.strokeStyle = '#d9a35f';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(side * 30, -22);
+    ctx.lineTo(side * 62, -70);
+    ctx.stroke();
+    circle(ctx, side * 64, -73, 8, '#fff2d6', COLOR.outline, 3);
+    ctx.restore();
+  }
+  // star body
+  const body = ctx.createRadialGradient(-18, -22, 6, 0, 0, 78);
+  body.addColorStop(0, '#fff6c9');
+  body.addColorStop(1, '#ffb52e');
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? 40 : 78;
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = COLOR.outline;
+  ctx.stroke();
+  ctx.fillStyle = body;
+  ctx.fill();
+  // cheeks
+  circle(ctx, -26, 12, 7, 'rgba(255,110,140,0.6)');
+  circle(ctx, 26, 12, 7, 'rgba(255,110,140,0.6)');
+  // eyes
+  ctx.strokeStyle = COLOR.outline;
+  ctx.fillStyle = COLOR.outline;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  for (const side of [-1, 1]) {
+    const ex = side * 15;
+    const ey = -2;
+    ctx.beginPath();
+    if (p.eyes === 'open') {
+      ctx.arc(ex, ey, 6, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.eyes === 'happy') {
+      ctx.arc(ex, ey + 3, 7, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+    } else if (p.eyes === 'sad') {
+      ctx.moveTo(ex - 7, ey + side * 3);
+      ctx.lineTo(ex + 7, ey - side * 3);
+      ctx.stroke();
+    } else {
+      ctx.moveTo(ex - 7, ey);
+      ctx.lineTo(ex + 7, ey);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  if (p.sparkle) sparkles(ctx, cx, ground - 80 - p.hop, 100, 10, 5, '#fff7c2', p.sparkle, p.hop / 30);
+}
+
+function hoshiFrames(n: number, pose: (ph: number, i: number) => Pose): OffscreenCanvas[] {
+  return Array.from({ length: n }, (_, i) => {
+    const [c, ctx] = canvas(360, 260);
+    drawHoshi(ctx, pose(i / n, i));
+    return c;
+  });
+}
+
+function hoshiStates(): Partial<Record<CharaState, OffscreenCanvas[]>> {
+  const TAU = Math.PI * 2;
+  const bounce = (ph: number, h: number) => Math.abs(Math.sin(ph * Math.PI)) * h;
+  const drum = (ph: number) => Math.sin(ph * TAU) * 0.6;
+  return {
+    Normal: hoshiFrames(8, (ph) => ({
+      hop: bounce(ph, 10),
+      squash: Math.cos(ph * TAU) * 0.04,
+      rot: 0,
+      armL: drum(ph),
+      armR: -drum(ph),
+      eyes: 'open',
+    })),
+    Clear: hoshiFrames(8, (ph) => ({
+      hop: bounce(ph, 22),
+      squash: Math.cos(ph * TAU) * 0.05,
+      rot: Math.sin(ph * TAU) * 0.08,
+      armL: drum(ph) + 0.6,
+      armR: -drum(ph) + 0.6,
+      eyes: 'happy',
+      sparkle: 0.5,
+    })),
+    GoGo: hoshiFrames(8, (ph) => ({
+      hop: bounce(ph * 2, 30),
+      squash: Math.cos(ph * TAU * 2) * 0.07,
+      rot: Math.sin(ph * TAU) * 0.12,
+      armL: drum(ph * 2) + 0.8,
+      armR: -drum(ph * 2) + 0.8,
+      eyes: 'happy',
+      aura: 'rgba(255,120,40,0.55)',
+    })),
+    '10combo': hoshiFrames(12, (ph) => ({
+      hop: Math.sin(ph * Math.PI) * 70,
+      squash: 0,
+      rot: ph * TAU,
+      armL: 1.2,
+      armR: 1.2,
+      eyes: 'happy',
+      sparkle: 1 - ph,
+    })),
+    GoGoStart: hoshiFrames(12, (ph) => ({
+      hop: Math.sin(ph * Math.PI) * 60,
+      squash: -Math.sin(ph * Math.PI) * 0.08,
+      rot: 0,
+      armL: 1.4,
+      armR: 1.4,
+      eyes: 'happy',
+      aura: `rgba(255,140,60,${0.7 * (1 - ph)})`,
+      sparkle: 1 - ph,
+    })),
+    Clearin: hoshiFrames(12, (ph) => ({
+      hop: Math.sin(ph * Math.PI) * 50,
+      squash: 0,
+      rot: Math.sin(ph * TAU) * 0.2,
+      armL: 1.3,
+      armR: 1.3,
+      eyes: 'happy',
+      sparkle: 1,
+    })),
+    Balloon_Breaking: hoshiFrames(6, (ph) => ({
+      hop: 0,
+      squash: -0.06 + Math.sin(ph * TAU) * 0.06,
+      rot: 0,
+      armL: Math.sin(ph * TAU) * 1.1,
+      armR: -Math.sin(ph * TAU) * 1.1,
+      eyes: 'closed',
+      pump: ph,
+    })),
+    Balloon_Broke: hoshiFrames(12, (ph) => ({
+      hop: Math.sin(ph * Math.PI) * 60,
+      squash: 0,
+      rot: 0,
+      armL: 1.4,
+      armR: 1.4,
+      eyes: 'happy',
+      sparkle: 1 - ph,
+    })),
+    Balloon_Miss: hoshiFrames(8, (ph) => ({
+      hop: 0,
+      squash: 0.05,
+      rot: Math.sin(ph * TAU) * 0.05,
+      armL: -0.5,
+      armR: -0.5,
+      eyes: 'sad',
+    })),
+  };
+}
+
+const HOSHI_BEATS: Partial<Record<CharaState, number>> = {
+  Normal: 1,
+  Clear: 1,
+  GoGo: 2,
+  '10combo': 1.5,
+  GoGoStart: 1.5,
+  Clearin: 1.5,
+  Balloon_Breaking: 0.35,
+  Balloon_Broke: 0.8,
+  Balloon_Miss: 0.8,
+};
+
 // ------------------------------------------------------------------ sounds
 
 /** Encodes mono float samples as a 16-bit PCM WAV file. */
@@ -1060,6 +1334,9 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       rollNumber: digitsSheet(95, 113, () => '#ffffff', '#1b3a8a'),
       rollFrame: rollFrame(),
       footer: footer(),
+      loadingBackground: loadingBackground(),
+      loadingPlate: loadingPlate(),
+      loadingChara: loadingChara(),
     };
     const layerSprites: Record<string, OffscreenCanvas> = {
       'gen:sky': sky(false),
@@ -1104,12 +1381,26 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       frames: dancerSets,
     };
 
+    const characterStates: LoadedCharacter['states'] = {};
+    await Promise.all(
+      Object.entries(hoshiStates()).map(async ([state, frames]) => {
+        const bitmaps = await Promise.all(frames!.map(bitmap));
+        characterStates[state as CharaState] = {
+          frames: bitmaps,
+          motion: bitmaps.map((_, i) => i),
+          beat: HOSHI_BEATS[state as CharaState] ?? 1,
+        };
+      }),
+    );
+    const character: LoadedCharacter = { x: 40, y: 10, balloonX: 40, balloonY: 10, scale: 1, states: characterStates };
+
     return {
       manifest: BUILTIN_MANIFEST,
       images,
       sounds: { don: synthDon(), ka: synthKa() },
       fontFamily: FONT,
       dancer,
+      character,
       layerImages,
     };
   })();

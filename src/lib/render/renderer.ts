@@ -1,5 +1,5 @@
 import { lowerBound, stepAt, type Hit, type Judgement, type Playthrough, type RollState } from '../sim/autoplay';
-import type { ImageKey, ImageSource, LoadedSkin } from '../skin/types';
+import type { CharaState, ImageKey, ImageSource, LoadedSkin } from '../skin/types';
 import type { Note, NoteType } from '../tja/types';
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -9,6 +9,13 @@ export interface RenderOptions {
   showTitle: boolean;
   /** Draw the skin's dancers (if it has any). Defaults to true. */
   showDancer?: boolean;
+  /** Draw the skin's character (if it has one). Defaults to true. */
+  showCharacter?: boolean;
+  /**
+   * Song loading screen shown before play, as a song-time range [start, end).
+   * Play fades in over the loading screen right after `end`.
+   */
+  intro?: { start: number; end: number };
   title: string;
   subtitle: string;
 }
@@ -30,6 +37,16 @@ const SOUL_FLASH_FRAME_MS = 19;
 const COMBO_POP_MS = 90;
 const ROLL_LINGER_MS = 1000;
 const MIN_COMBO_SHOWN = 10;
+const INTRO_FADE_MS = 400;
+
+interface CharaSegment {
+  start: number;
+  /** Ends at whichever comes first: `end` (ms) or `endBeat` (beat clock). */
+  end: number;
+  endBeat: number;
+  state: CharaState;
+  loop: boolean;
+}
 
 /** Column in Notes.png for each note kind. */
 const NOTE_COL: Record<NoteType, number> = {
@@ -138,6 +155,8 @@ export class TaikoRenderer implements FrameRenderer {
     this.beatPoints = buildBeatPoints(play);
     const g = play.gauge.find((s) => s.value >= play.clearThreshold);
     this.clearTime = g ? g.time : Infinity;
+    // Needs beatPoints and clearTime.
+    this.charaSegments = this.buildCharaSegments();
   }
 
   // ---------------------------------------------------------------- helpers
@@ -245,7 +264,26 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
 
+    const intro = this.opts.intro;
+    if (intro && t < intro.end) {
+      this.drawLoading(ctx, t);
+      ctx.restore();
+      return;
+    }
+
+    this.drawPlay(ctx, t);
+
+    if (intro && t < intro.end + INTRO_FADE_MS) {
+      ctx.globalAlpha = 1 - (t - intro.end) / INTRO_FADE_MS;
+      this.drawLoading(ctx, t);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  private drawPlay(ctx: Ctx2D, t: number): void {
     this.drawBackground(ctx, t);
+    if (this.opts.showCharacter !== false) this.drawCharacter(ctx, t);
     this.drawLane(ctx, t);
     this.drawBars(ctx, t);
     this.drawJudgeCircle(ctx);
@@ -258,8 +296,200 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawJudgeText(ctx, t);
     this.drawFlyingNotes(ctx, t);
     if (this.opts.showTitle) this.drawTitle(ctx);
+  }
 
+  // ---------------------------------------------------------------- loading screen
+
+  /** Song loading screen (OpenTaiko 4_SongLoading style): background, sliding chara, plate, title. */
+  private drawLoading(ctx: Ctx2D, t: number): void {
+    const L = this.skin.manifest.layout;
+    const intro = this.opts.intro!;
+    const elapsed = t - intro.start;
+    const baseAlpha = ctx.globalAlpha;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.globalAlpha = baseAlpha * Math.min(1, Math.max(0, elapsed / 300));
+
+    const bg = this.img('loadingBackground');
+    if (bg) ctx.drawImage(bg, 0, 0, this.width, this.height);
+    else {
+      const g = ctx.createLinearGradient(0, 0, 0, this.height);
+      g.addColorStop(0, '#222');
+      g.addColorStop(1, '#000');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, this.width, this.height);
+    }
+
+    const chara = this.img('loadingChara');
+    if (chara) {
+      const k = 1 - easeOutCubic(elapsed / 500);
+      const [mx, my] = L.loadingCharaMove;
+      // Left half slides in from the left, right half from the right.
+      const half = chara.width / 2;
+      ctx.drawImage(chara, 0, 0, half, chara.height, -mx * k, my * k, half, chara.height);
+      ctx.drawImage(chara, half, 0, half, chara.height, half + mx * k, my * k, half, chara.height);
+    }
+
+    const plate = this.img('loadingPlate');
+    if (plate) ctx.drawImage(plate, L.loadingPlate[0] - plate.width / 2, L.loadingPlate[1] - plate.height / 2);
+
+    const textAlpha = Math.min(1, Math.max(0, (elapsed - 150) / 300));
+    ctx.globalAlpha = baseAlpha * textAlpha;
+    this.drawCenteredText(ctx, this.opts.title, L.loadingTitle, L.loadingTitleFontSize, L.loadingTitleColor, L.loadingTitleStroke);
+    this.drawCenteredText(
+      ctx,
+      this.opts.subtitle,
+      L.loadingSubtitle,
+      L.loadingSubtitleFontSize,
+      L.loadingTitleColor,
+      L.loadingTitleStroke,
+    );
+    ctx.globalAlpha = baseAlpha;
+  }
+
+  private drawCenteredText(ctx: Ctx2D, text: string, [x, y]: [number, number], size: number, fill: string, stroke: string) {
+    if (!text) return;
+    ctx.save();
+    ctx.font = `${size}px ${this.skin.fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    const maxW = this.width * 0.8;
+    const w = ctx.measureText(text).width;
+    ctx.translate(x, y);
+    if (w > maxW) ctx.scale(maxW / w, 1);
+    if (stroke) {
+      ctx.lineWidth = size / 5;
+      ctx.strokeStyle = stroke;
+      ctx.strokeText(text, 0, 0);
+    }
+    ctx.fillStyle = fill;
+    ctx.fillText(text, 0, 0);
     ctx.restore();
+  }
+
+  // ---------------------------------------------------------------- character
+
+  private readonly charaSegments: CharaSegment[];
+
+  /**
+   * One-shot character animations as time segments, following OpenTaiko's
+   * triggers: 10combo (every 10 combo outside GoGo), GoGoStart, Clearin, Soulin,
+   * and the balloon animations. A new one-shot interrupts the current one,
+   * except that 10combo doesn't restart itself.
+   */
+  private buildCharaSegments(): CharaSegment[] {
+    const ch = this.skin.character;
+    if (!ch) return [];
+    const has = (s: CharaState) => !!ch.states[s];
+    const maxTime = this.play.gauge.find((s) => s.value >= 100)?.time ?? Infinity;
+    const isMax = (t: number) => t >= maxTime;
+    const events: { time: number; state: CharaState; loopUntil?: number; priority: number }[] = [];
+    const pick = (base: CharaState, max: CharaState, t: number): CharaState | null =>
+      isMax(t) && has(max) ? max : has(base) ? base : null;
+
+    const notes = this.play.course.notes;
+    this.play.judgements.forEach((j, k) => {
+      const combo = k + 1;
+      if (combo % 10 === 0 && !notes[j.noteIndex].gogo) {
+        const s = pick('10combo', '10combo_Max', j.time);
+        if (s) events.push({ time: j.time, state: s, priority: 0 });
+      }
+    });
+    for (const g of this.play.course.gogo) {
+      const s = pick('GoGoStart', 'GoGoStart_Max', g.start);
+      if (s) events.push({ time: g.start, state: s, priority: 1 });
+    }
+    if (Number.isFinite(this.clearTime) && has('Clearin')) events.push({ time: this.clearTime, state: 'Clearin', priority: 1 });
+    if (Number.isFinite(maxTime) && has('Soulin')) events.push({ time: maxTime, state: 'Soulin', priority: 1 });
+    for (const r of this.play.rolls) {
+      if (notes[r.noteIndex].type !== 'balloon' || !r.hitTimes.length) continue;
+      const end = r.popTime ?? r.end;
+      if (has('Balloon_Breaking')) events.push({ time: r.hitTimes[0], state: 'Balloon_Breaking', loopUntil: end, priority: 2 });
+      const after: CharaState = r.popTime !== undefined ? 'Balloon_Broke' : 'Balloon_Miss';
+      if (has(after)) events.push({ time: end, state: after, priority: 2 });
+    }
+    events.sort((a, b) => a.time - b.time || a.priority - b.priority);
+
+    const segs: CharaSegment[] = [];
+    for (const e of events) {
+      const st = ch.states[e.state]!;
+      const balloon = e.state.startsWith('Balloon_');
+      const seg: CharaSegment = {
+        start: e.time,
+        state: e.state,
+        // Balloon states run in seconds, others in beats (as in OpenTaiko).
+        end: e.loopUntil ?? (balloon ? e.time + st.beat * 1000 : Infinity),
+        endBeat: balloon || e.loopUntil !== undefined ? Infinity : this.beatsAt(e.time) + st.beat,
+        loop: e.loopUntil !== undefined,
+      };
+      const prev = segs[segs.length - 1];
+      if (prev && this.segmentActive(prev, e.time)) {
+        if (prev.state === e.state && e.state.startsWith('10combo')) continue; // don't restart 10combo
+        if (prev.loop && !e.state.startsWith('Balloon_')) continue; // balloon pumping has priority
+        prev.end = Math.min(prev.end, e.time);
+      }
+      segs.push(seg);
+    }
+    return segs;
+  }
+
+  private segmentActive(s: CharaSegment, t: number): boolean {
+    return t >= s.start && t < s.end && this.beatsAt(t) < s.endBeat;
+  }
+
+  private drawCharacter(ctx: Ctx2D, t: number): void {
+    const ch = this.skin.character;
+    if (!ch) return;
+    let state: CharaState | null = null;
+    let progress = 0;
+    let balloon = false;
+
+    const segs = this.charaSegments;
+    let lo = 0;
+    let hi = segs.length - 1;
+    let idx = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (segs[mid].start <= t) {
+        idx = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    const seg = idx >= 0 ? segs[idx] : undefined;
+    if (seg && this.segmentActive(seg, t)) {
+      const st = ch.states[seg.state]!;
+      state = seg.state;
+      balloon = seg.state.startsWith('Balloon_');
+      if (seg.loop) progress = (((t - seg.start) / 1000 / st.beat) % 1 + 1) % 1;
+      else if (balloon) progress = (t - seg.start) / (st.beat * 1000);
+      else progress = (this.beatsAt(t) - (seg.endBeat - st.beat)) / st.beat;
+    } else {
+      const gauge = stepAt(this.play.gauge, t);
+      const max = gauge >= 100;
+      const cleared = gauge >= this.play.clearThreshold;
+      const candidates: CharaState[] = this.isGogo(t)
+        ? max
+          ? ['GoGo_Max', 'GoGo', 'Normal']
+          : ['GoGo', 'Normal']
+        : max
+          ? ['Clear_Max', 'Clear', 'Normal']
+          : cleared
+            ? ['Clear', 'Normal']
+            : ['Normal'];
+      state = candidates.find((s) => ch.states[s]) ?? null;
+      if (!state) return;
+      const cycle = this.beatsAt(t) / Math.max(1e-6, ch.states[state]!.beat);
+      progress = cycle - Math.floor(cycle);
+    }
+
+    const st = ch.states[state!]!;
+    const m = st.motion;
+    const frame = st.frames[m[Math.max(0, Math.min(m.length - 1, Math.floor(progress * m.length)))]];
+    if (!frame) return;
+    const x = balloon ? ch.balloonX : ch.x;
+    const y = balloon ? ch.balloonY : ch.y;
+    ctx.drawImage(frame, x, y, frame.width * ch.scale, frame.height * ch.scale);
   }
 
   private isGogo(t: number): boolean {
@@ -729,7 +959,7 @@ export class TaikoRenderer implements FrameRenderer {
     const L = this.skin.manifest.layout;
     const im = this.img('judge');
     if (!im) return;
-    const rowH = im.height / 5;
+    const rowH = im.height / Math.max(1, this.skin.manifest.layout.judgeRows);
     const js = this.play.judgements;
     for (let i = lowerBound(js, t - JUDGE_MS); i < js.length && js[i].time <= t; i++) {
       const e = t - js[i].time;

@@ -7,6 +7,8 @@ export interface TimelineOptions {
   tailMs: number;
   /** 'audio' = run until the song ends, 'chart' = stop shortly after the last note. */
   endMode: 'audio' | 'chart';
+  /** Length of the song loading screen shown before play (0 = none). */
+  introMs?: number;
 }
 
 export interface Timeline {
@@ -14,17 +16,25 @@ export interface Timeline {
   leadInMs: number;
   /** Total video length (ms). */
   durationMs: number;
+  /** Loading screen range in song time, if enabled. */
+  intro?: { start: number; end: number };
 }
 
 export function computeTimeline(play: Playthrough, musicDurationMs: number | null, o: TimelineOptions): Timeline {
   const firstBar = play.course.bars[0]?.time ?? play.firstTime;
   const chartStart = Math.min(firstBar, play.firstTime);
   // Start no later than the audio, and early enough that the first notes scroll in.
-  const startSong = Math.min(0, chartStart - o.preRollMs);
+  const playStart = Math.min(0, chartStart - o.preRollMs);
+  const introMs = Math.max(0, o.introMs ?? 0);
+  const startSong = playStart - introMs;
   const leadInMs = -startSong;
 
   const chartEnd = play.lastTime + o.tailMs;
   const endSong =
     o.endMode === 'audio' && musicDurationMs !== null ? Math.max(musicDurationMs, play.lastTime + 1000) : chartEnd;
-  return { leadInMs, durationMs: Math.max(1000, endSong + leadInMs) };
+  return {
+    leadInMs,
+    durationMs: Math.max(1000, endSong + leadInMs),
+    intro: introMs > 0 ? { start: startSong, end: playStart } : undefined,
+  };
 }
