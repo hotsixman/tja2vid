@@ -37,7 +37,7 @@ const SOUL_FLASH_FRAME_MS = 19;
 const COMBO_POP_MS = 90;
 const ROLL_LINGER_MS = 1000;
 const MIN_COMBO_SHOWN = 10;
-const INTRO_FADE_MS = 400;
+const INTRO_TRANSITION_MS = 450;
 
 interface CharaSegment {
   start: number;
@@ -276,10 +276,14 @@ export class TaikoRenderer implements FrameRenderer {
 
     this.drawPlay(ctx, t);
 
-    if (intro && t < intro.end + INTRO_FADE_MS) {
-      ctx.globalAlpha = 1 - (t - intro.end) / INTRO_FADE_MS;
-      this.drawLoading(ctx, t);
-      ctx.globalAlpha = 1;
+    if (intro && t < intro.end + INTRO_TRANSITION_MS) {
+      const p = (t - intro.end) / INTRO_TRANSITION_MS;
+      if (this.skin.manifest.layout.loadingTransition === 'curtain') this.drawCurtain(ctx, easeOutCubic(p));
+      else {
+        ctx.globalAlpha = 1 - p;
+        this.drawLoading(ctx, t);
+        ctx.globalAlpha = 1;
+      }
     }
     ctx.restore();
   }
@@ -305,51 +309,113 @@ export class TaikoRenderer implements FrameRenderer {
 
   // ---------------------------------------------------------------- loading screen
 
-  /** Song loading screen (OpenTaiko 4_SongLoading style): background, sliding chara, plate, title. */
+  /**
+   * Song loading screen, timed like the arcade: the chara slides in, the plate
+   * and title fade in, then near the end the title, plate and chara fade out
+   * leaving only the background (which the curtain transition then opens).
+   */
   private drawLoading(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
     const intro = this.opts.intro!;
-    const elapsed = t - intro.start;
-    const baseAlpha = ctx.globalAlpha;
+    const D = intro.end - intro.start;
+    const e = t - intro.start;
+    const k = Math.min(1, D / 3000); // compress the timings for short intros
+    const ramp = (from: number, len: number) => Math.min(1, Math.max(0, (e - from) / Math.max(1, len)));
+    const curtain = L.loadingTransition === 'curtain';
+    const base = ctx.globalAlpha;
+
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, this.width, this.height);
-    ctx.globalAlpha = baseAlpha * Math.min(1, Math.max(0, elapsed / 300));
+    ctx.globalAlpha = base * ramp(0, 250 * k);
+    this.drawLoadingBackground(ctx, 0, this.width);
 
+    // When the curtain follows, everything but the background fades out first.
+    const outro = curtain ? 1 - ramp(D - 650 * k, 300 * k) : 1;
+    const charaOut = curtain ? 1 - ramp(D - 450 * k, 300 * k) : 1;
+
+    const chara = this.img('loadingChara');
+    if (chara && charaOut > 0) {
+      const slide = 1 - easeOutCubic(ramp(0, 450 * k));
+      const [mx, my] = L.loadingCharaMove;
+      const half = chara.width / 2;
+      ctx.globalAlpha = base * charaOut;
+      // Left half slides in from the left, right half from the right.
+      ctx.drawImage(chara, 0, 0, half, chara.height, -mx * slide, my * slide, half, chara.height);
+      ctx.drawImage(chara, half, 0, half, chara.height, half + mx * slide, my * slide, half, chara.height);
+    }
+
+    const plateIn = ramp(200 * k, 300 * k);
+    const plate = this.img('loadingPlate');
+    if (plate && plateIn * outro > 0) {
+      ctx.globalAlpha = base * plateIn * outro;
+      ctx.drawImage(plate, L.loadingPlate[0] - plate.width / 2, L.loadingPlate[1] - plate.height / 2);
+    }
+
+    const textAlpha = ramp(350 * k, 300 * k) * (curtain ? 1 - ramp(D - 800 * k, 200 * k) : 1);
+    if (textAlpha > 0) {
+      ctx.globalAlpha = base * textAlpha;
+      this.drawCenteredText(ctx, this.opts.title, L.loadingTitle, L.loadingTitleFontSize, L.loadingTitleColor, L.loadingTitleStroke);
+      this.drawCenteredText(
+        ctx,
+        this.opts.subtitle,
+        L.loadingSubtitle,
+        L.loadingSubtitleFontSize,
+        L.loadingSubtitleColor,
+        L.loadingSubtitleStroke,
+      );
+    }
+    ctx.globalAlpha = base;
+  }
+
+  /** Loading background (or a plain gradient), shifted horizontally by dx. */
+  private drawLoadingBackground(ctx: Ctx2D, dx: number, _w: number): void {
     const bg = this.img('loadingBackground');
-    if (bg) ctx.drawImage(bg, 0, 0, this.width, this.height);
+    if (bg) ctx.drawImage(bg, dx, 0, this.width, this.height);
     else {
       const g = ctx.createLinearGradient(0, 0, 0, this.height);
       g.addColorStop(0, '#222');
       g.addColorStop(1, '#000');
       ctx.fillStyle = g;
-      ctx.fillRect(0, 0, this.width, this.height);
+      ctx.fillRect(dx, 0, this.width, this.height);
     }
+  }
 
-    const chara = this.img('loadingChara');
-    if (chara) {
-      const k = 1 - easeOutCubic(elapsed / 500);
-      const [mx, my] = L.loadingCharaMove;
-      // Left half slides in from the left, right half from the right.
-      const half = chara.width / 2;
-      ctx.drawImage(chara, 0, 0, half, chara.height, -mx * k, my * k, half, chara.height);
-      ctx.drawImage(chara, half, 0, half, chara.height, half + mx * k, my * k, half, chara.height);
+  /**
+   * Arcade-style transition: the loading background splits at the centre into
+   * two curtains with curved inner edges that slide apart (p: 0 closed → 1 open).
+   */
+  private drawCurtain(ctx: Ctx2D, p: number): void {
+    const W = this.width;
+    const H = this.height;
+    const shift = (W / 2) * p;
+    const bulge = W * 0.14 * Math.sin(Math.min(1, p * 1.6) * Math.PI * 0.5);
+    for (const side of [-1, 1] as const) {
+      ctx.save();
+      ctx.beginPath();
+      const steps = 24;
+      const edge = (y: number) => {
+        // Inner edge: gathered at the bottom, like a drape being pulled aside.
+        const f = (y / H) ** 1.6;
+        return W / 2 - shift - bulge * f;
+      };
+      if (side === -1) {
+        ctx.moveTo(0, 0);
+        for (let i = 0; i <= steps; i++) ctx.lineTo(edge((i / steps) * H), (i / steps) * H);
+        ctx.lineTo(0, H);
+      } else {
+        ctx.moveTo(W, 0);
+        for (let i = 0; i <= steps; i++) ctx.lineTo(W - edge((i / steps) * H), (i / steps) * H);
+        ctx.lineTo(W, H);
+      }
+      ctx.closePath();
+      ctx.clip();
+      this.drawLoadingBackground(ctx, side * shift, W);
+      // Soft shadow along the inner edge for depth.
+      ctx.lineWidth = 18;
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+      ctx.stroke();
+      ctx.restore();
     }
-
-    const plate = this.img('loadingPlate');
-    if (plate) ctx.drawImage(plate, L.loadingPlate[0] - plate.width / 2, L.loadingPlate[1] - plate.height / 2);
-
-    const textAlpha = Math.min(1, Math.max(0, (elapsed - 150) / 300));
-    ctx.globalAlpha = baseAlpha * textAlpha;
-    this.drawCenteredText(ctx, this.opts.title, L.loadingTitle, L.loadingTitleFontSize, L.loadingTitleColor, L.loadingTitleStroke);
-    this.drawCenteredText(
-      ctx,
-      this.opts.subtitle,
-      L.loadingSubtitle,
-      L.loadingSubtitleFontSize,
-      L.loadingSubtitleColor,
-      L.loadingSubtitleStroke,
-    );
-    ctx.globalAlpha = baseAlpha;
   }
 
   private drawCenteredText(ctx: Ctx2D, text: string, [x, y]: [number, number], size: number, fill: string, stroke: string) {

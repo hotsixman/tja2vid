@@ -77,6 +77,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   loadingTitleStroke: '#000000',
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
+  loadingTransition: 'curtain',
 };
 
 /**
@@ -232,6 +233,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   loadingTitleStroke: '#000000',
   loadingSubtitleColor: '#000000',
   loadingSubtitleStroke: '',
+  loadingTransition: 'curtain',
 };
 
 /**
@@ -363,6 +365,9 @@ export function applyOpenTaikoIni(
   l.loadingTitleStroke = color('SongLoading_Title_BackColor') ?? l.loadingTitleStroke;
   l.loadingSubtitleColor = color('SongLoading_SubTitle_ForeColor') ?? l.loadingSubtitleColor;
   l.loadingSubtitleStroke = color('SongLoading_SubTitle_BackColor') ?? l.loadingSubtitleStroke;
+  // tja2vid extension: SongLoading_Transition=fade|curtain
+  const tr = game.SongLoading_Transition?.trim().toLowerCase();
+  if (tr === 'fade' || tr === 'curtain') l.loadingTransition = tr;
   if (game.Game_Notes_Anime !== undefined) l.notesAnime = /^(1|true)$/i.test(game.Game_Notes_Anime.trim());
   const sine = nums(game.Game_Effect_FlyingNotes_Sine)[0];
   if (sine !== undefined) l.flyingSine = sine;

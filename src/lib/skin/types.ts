@@ -166,6 +166,8 @@ export interface SkinLayout {
   loadingTitleStroke: string;
   loadingSubtitleColor: string;
   loadingSubtitleStroke: string;
+  /** How the loading screen gives way to play: crossfade, or split open like a curtain. */
+  loadingTransition: 'fade' | 'curtain';
 }
 
 export interface SkinManifest {

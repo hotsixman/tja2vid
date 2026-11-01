@@ -106,6 +106,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingTitleStroke: '#15121f',
   loadingSubtitleColor: '#ffd2ec',
   loadingSubtitleStroke: '#15121f',
+  loadingTransition: 'fade',
 };
 
 const BACKGROUND: BackgroundSpec = {
