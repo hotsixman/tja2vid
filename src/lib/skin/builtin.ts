@@ -1520,27 +1520,46 @@ function synthJingle(notes: number[], sr = 48000): ArrayBuffer {
 
 // ------------------------------------------------------------------ result banners
 
-/** Result banner over the lane: text pops in with a bounce, then sparkles (24 frames × 40ms, last held). */
-function resultBanner(label: string, fill: (ctx: C2D) => string | CanvasGradient): OffscreenCanvas[] {
+/**
+ * Result banner over the lane, drawn every frame (smooth at any fps): the band
+ * opens, the text pops in with a bounce, then sparkles drift out. 920ms, last
+ * state held. The donderful combo gets a gold-striped lane background.
+ */
+function drawResultBanner(
+  ctx: C2D,
+  label: string,
+  fill: (ctx: C2D) => string | CanvasGradient,
+  e: number,
+  donda: boolean,
+): void {
+  const X = 520;
+  const Y = 260;
   const FW = 1400;
   const FH = 260;
-  const out: OffscreenCanvas[] = [];
-  for (let i = 0; i < 24; i++) {
-    const [c, ctx] = canvas(FW, FH);
-    const p = i / 23;
-    const pop = p < 0.3 ? easeOut(p / 0.3) * 1.15 : 1.15 - Math.min(1, (p - 0.3) / 0.2) * 0.15;
-    ctx.globalAlpha = Math.min(1, p / 0.15);
-    ctx.fillStyle = 'rgba(12,10,28,0.55)';
-    ctx.fillRect(0, FH / 2 - 70 * Math.min(1, p / 0.2), FW, 140 * Math.min(1, p / 0.2));
-    ctx.save();
-    ctx.translate(FW / 2, FH / 2);
-    ctx.scale(pop, pop);
-    text(ctx, label, 0, 4, 96, fill(ctx), COLOR.outline, 'center', 900);
-    ctx.restore();
-    if (p > 0.3) sparkles(ctx, FW / 2, FH / 2, 260 + p * 160, 14, 8 * (1 - p) + 3, '#fff7c2', 1.2 - p, p * 2);
-    out.push(c);
+  const p = Math.min(1, e / 920);
+  ctx.save();
+  if (donda && e >= 300) {
+    ctx.globalAlpha = Math.min(1, (e - 300) / 200);
+    const g = ctx.createLinearGradient(0, Y + 30, 0, Y + 230);
+    g.addColorStop(0, '#fff3b0');
+    g.addColorStop(1, '#f2a91f');
+    ctx.fillStyle = g;
+    ctx.fillRect(X, Y + 30, FW, 200);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    for (let x = X; x < X + FW; x += 80) ctx.fillRect(x, Y + 30, 40, 200);
   }
-  return out;
+  const pop = p < 0.3 ? easeOut(p / 0.3) * 1.15 : 1.15 - Math.min(1, (p - 0.3) / 0.2) * 0.15;
+  const band = Math.min(1, p / 0.2);
+  ctx.globalAlpha = Math.min(1, p / 0.15);
+  ctx.fillStyle = 'rgba(12,10,28,0.55)';
+  ctx.fillRect(X, Y + FH / 2 - 70 * band, FW, 140 * band);
+  ctx.save();
+  ctx.translate(X + FW / 2, Y + FH / 2);
+  ctx.scale(pop, pop);
+  text(ctx, label, 0, 4, 96, fill(ctx), COLOR.outline, 'center', 900);
+  ctx.restore();
+  if (p > 0.3) sparkles(ctx, X + FW / 2, Y + FH / 2, 260 + p * 160, 14, 8 * (1 - p) + 3, '#fff7c2', 1.2 - p, p * 2);
+  ctx.restore();
 }
 
 // ------------------------------------------------------------------ assemble
@@ -1713,16 +1732,13 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       ['#ff5f5f', '#ffd25e', '#7cff8a', '#35c3ff', '#b98cff', '#ff5fa2'].forEach((col, i) => g.addColorStop(i / 5, col));
       return g;
     };
-    const banner = async (label: string, fill: (ctx: C2D) => string | CanvasGradient) => ({
-      frames: await Promise.all(resultBanner(label, fill).map(bitmap)),
-      frameMs: 40,
-      x: 520,
-      y: 260,
-    });
-    const endAnim = {
-      clear: await banner('CLEAR!', () => '#ffffff'),
-      fullCombo: await banner('FULL COMBO!', gold),
-      dondaFullCombo: await banner('DONDERFUL COMBO!', rainbow),
+    const endAnim: LoadedSkin['endAnim'] = {
+      procedural: (ctx, result, e) => {
+        const c = ctx as C2D;
+        if (result === 'clear') drawResultBanner(c, 'CLEAR!', () => '#ffffff', e, false);
+        else if (result === 'fullCombo') drawResultBanner(c, 'FULL COMBO!', gold, e, false);
+        else drawResultBanner(c, 'DONDERFUL COMBO!', rainbow, e, true);
+      },
     };
 
     const gaugeRainbow = { frames: await Promise.all(rainbowFrames().map(bitmap)), frameMs: 50 };

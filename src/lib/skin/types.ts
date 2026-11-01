@@ -261,7 +261,7 @@ export interface SkinManifest {
    * `<dir>/DondaFullCombo/…` frame sequences, and the Clear parts
    * `<dir>/Clear/Clear_L_0..4.png, Clear_R_0..4.png, Clear_Text.png, Clear_Text_Effect.png`.
    */
-  endAnim?: { dir: string };
+  endAnim?: { dir: string; frameMs?: number; loopFrameMs?: number };
   /** Rainbow gauge frames shown when the gauge is full: `<dir>/0.png …` (OpenTaiko 7_Gauge/Rainbow). */
   gaugeRainbow?: { dir: string; frameMs?: number };
   /**
@@ -392,6 +392,8 @@ export interface LoadedCharacter {
 /** A frame sequence drawn at (x, y) in skin pixels; the last frame is held. */
 export interface EndSequence {
   frames: ImageSource[];
+  /** Per-frame draw offsets when frames were cropped to their visible area. */
+  offsets?: [number, number][];
   frameMs: number;
   x: number;
   y: number;
@@ -399,8 +401,14 @@ export interface EndSequence {
 
 export interface LoadedEndAnim {
   fullCombo?: EndSequence;
+  /** Loop shown after the full-combo sequence ends (FullCombo/loop_N.png). */
+  fullComboLoop?: EndSequence;
   dondaFullCombo?: EndSequence;
+  /** Lane background behind the donderful-combo sequence (DondaFullCombo/bg.png), from its 34th frame. */
+  dondaBackground?: { image: ImageSource; x: number; y: number; fromMs: number };
   clear?: EndSequence;
+  /** Code-drawn result animation (built-in skin); e = ms since the animation started. */
+  procedural?: (ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, result: 'clear' | 'fullCombo' | 'dondaFullCombo', e: number) => void;
   /** TJAPlayer3 Clear animation parts (taiko pair opening over the "クリア成功" text). */
   clearParts?: { l: ImageSource[]; r: ImageSource[]; text: ImageSource; effect?: ImageSource };
 }

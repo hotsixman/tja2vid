@@ -289,6 +289,13 @@ async function resolveManifest(resolve: SkinFileResolver, base: SkinManifest): P
   if (!(await exists(resolve, manifest.images.bgUpBase!)) && (await exists(resolve, `${G}/5_Background/0/1P_Up_1st.png`))) {
     manifest.background = legacyBackground(resolution);
   }
+  // tja2vid extension: result frames may be pre-interpolated (e.g. 8.25ms for 120fps).
+  const efm = parseFloat(ini.Game_End_FrameMs ?? '');
+  const elm = parseFloat(ini.Game_End_LoopFrameMs ?? '');
+  if (manifest.endAnim) {
+    if (efm > 0) manifest.endAnim.frameMs = efm;
+    if (elm > 0) manifest.endAnim.loopFrameMs = elm;
+  }
   manifest.dancer = await detectDancer(resolve, ini);
   manifest.character = await detectCharacter(resolve, ini, resolution);
   manifest.font = detectFont(resolve);
@@ -548,27 +555,91 @@ async function loadDancer(resolve: SkinFileResolver, m: DancerManifest): Promise
  * and are drawn at (lane X, scroll field Y − 142) in 720p units.
  */
 async function loadEndAnim(resolve: SkinFileResolver, manifest: SkinManifest): Promise<LoadedSkin['endAnim']> {
-  const dir = manifest.endAnim!.dir;
+  const { dir, frameMs = 33, loopFrameMs = 30 } = manifest.endAnim!;
   const L = manifest.layout;
   const u = manifest.resolution[1] / 720;
-  const seq = (frames: ImageSource[]) =>
-    frames.length ? { frames, frameMs: 33, x: L.lane[0], y: L.scrollField[1] - 142 * u } : undefined;
+  const seq = async (raw: ImageSource[]) => {
+    if (!raw.length) return undefined;
+    const { frames, offsets } = await cropFrames(raw);
+    return { frames, offsets, frameMs, x: L.lane[0], y: L.scrollField[1] - 142 * u };
+  };
   const range = (n: number) => Array.from({ length: n }, (_, i) => i);
-  const [fc, dfc, l, r, text, effect] = await Promise.all([
+  const loadLoop = async (d: string) => {
+    const out: ImageSource[] = [];
+    for (let i = 0; i < 1000; i++) {
+      const im = await decodeImage(resolve, `${d}/loop_${i}.png`);
+      if (!im) break;
+      out.push(im);
+    }
+    return out;
+  };
+  const [fc, dfc, l, r, text, effect, fcLoop, dfcBg] = await Promise.all([
     loadFrames(resolve, `${dir}/FullCombo`),
     loadFrames(resolve, `${dir}/DondaFullCombo`),
     Promise.all(range(5).map((i) => decodeImage(resolve, `${dir}/Clear/Clear_L_${i}.png`))),
     Promise.all(range(5).map((i) => decodeImage(resolve, `${dir}/Clear/Clear_R_${i}.png`))),
     decodeImage(resolve, `${dir}/Clear/Clear_Text.png`),
     decodeImage(resolve, `${dir}/Clear/Clear_Text_Effect.png`),
+    loadLoop(`${dir}/FullCombo`),
+    decodeImage(resolve, `${dir}/DondaFullCombo/bg.png`),
   ]);
   // Sequences may end with blank frames (TJAPlayer3 then shows separate loop images,
   // which skins often lack); drop them so the last visible frame stays on screen.
-  const out: NonNullable<LoadedSkin['endAnim']> = { fullCombo: seq(trimBlank(fc)), dondaFullCombo: seq(trimBlank(dfc)) };
+  const out: NonNullable<LoadedSkin['endAnim']> = {
+    fullCombo: await seq(trimBlank(fc)),
+    dondaFullCombo: await seq(trimBlank(dfc)),
+  };
+  // TJAPlayer3: the loop is drawn at scroll field Y + 4 once the sequence has ended.
+  if (fcLoop.length) out.fullComboLoop = { frames: fcLoop, frameMs: loopFrameMs, x: L.lane[0], y: L.scrollField[1] + 4 * u };
+  // TJAPlayer3: bg.png at the lane from the 34th frame (33ms each) of the original sequence.
+  if (dfcBg) out.dondaBackground = { image: dfcBg, x: L.lane[0], y: L.scrollField[1], fromMs: 34 * 33 };
   if (text && l.every(Boolean) && r.every(Boolean)) {
     out.clearParts = { l: l as ImageSource[], r: r as ImageSource[], text, effect: effect ?? undefined };
   }
   return out.fullCombo || out.dondaFullCombo || out.clearParts ? out : undefined;
+}
+
+/** Crops frames to their visible (alpha) area to save memory; returns the crops and their offsets. */
+async function cropFrames(frames: ImageSource[]): Promise<{ frames: ImageSource[]; offsets: [number, number][] }> {
+  const out: ImageSource[] = [];
+  const offsets: [number, number][] = [];
+  for (const im of frames) {
+    const c = new OffscreenCanvas(im.width, im.height);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      out.push(im);
+      offsets.push([0, 0]);
+      continue;
+    }
+    ctx.drawImage(im, 0, 0);
+    const d = ctx.getImageData(0, 0, im.width, im.height).data;
+    let x0 = im.width, y0 = im.height, x1 = -1, y1 = -1;
+    for (let y = 0; y < im.height; y++) {
+      const row = y * im.width * 4;
+      for (let x = 0; x < im.width; x++) {
+        if (d[row + x * 4 + 3] > 2) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) {
+      // Fully transparent: keep a 1px placeholder.
+      out.push(await createImageBitmap(c, 0, 0, 1, 1));
+      offsets.push([0, 0]);
+    } else if (x0 === 0 && y0 === 0 && x1 === im.width - 1 && y1 === im.height - 1) {
+      out.push(im);
+      offsets.push([0, 0]);
+      continue;
+    } else {
+      out.push(await createImageBitmap(c, x0, y0, x1 - x0 + 1, y1 - y0 + 1));
+      offsets.push([x0, y0]);
+    }
+    if ('close' in im) (im as ImageBitmap).close();
+  }
+  return { frames: out, offsets };
 }
 
 function isBlank(im: ImageSource): boolean {

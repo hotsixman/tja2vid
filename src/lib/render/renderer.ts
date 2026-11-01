@@ -495,19 +495,35 @@ export class TaikoRenderer implements FrameRenderer {
     if (result === 'none' || !anim) return;
     const e = t - endAnimationTime(this.play);
     if (e < 0) return;
+    if (anim.procedural) {
+      anim.procedural(ctx, result, e);
+      return;
+    }
     if (result === 'clear') {
       if (anim.clearParts) this.drawClearParts(ctx, e);
       else if (anim.clear) this.drawEndSequence(ctx, anim.clear, e);
       return;
     }
-    const seq = result === 'fullCombo' ? anim.fullCombo : (anim.dondaFullCombo ?? anim.fullCombo);
-    if (seq) this.drawEndSequence(ctx, seq, e);
+    const donda = result === 'dondaFullCombo' && !!anim.dondaFullCombo;
+    const seq = donda ? anim.dondaFullCombo : anim.fullCombo;
+    if (!seq) return;
+    const bg = anim.dondaBackground;
+    if (donda && bg && e >= bg.fromMs) ctx.drawImage(bg.image, bg.x, bg.y);
+    const loop = !donda ? anim.fullComboLoop : undefined;
+    if (loop && e >= seq.frames.length * seq.frameMs) {
+      const n = loop.frames.length;
+      const i = Math.floor((e - seq.frames.length * seq.frameMs) / loop.frameMs) % n;
+      ctx.drawImage(loop.frames[i], loop.x, loop.y);
+      return;
+    }
+    this.drawEndSequence(ctx, seq, e);
   }
 
   /** Frame sequence; the last frame stays on screen. */
   private drawEndSequence(ctx: Ctx2D, seq: EndSequence, e: number): void {
-    const f = seq.frames[Math.min(seq.frames.length - 1, Math.floor(e / seq.frameMs))];
-    ctx.drawImage(f, seq.x, seq.y);
+    const i = Math.min(seq.frames.length - 1, Math.floor(e / seq.frameMs));
+    const [ox, oy] = seq.offsets?.[i] ?? [0, 0];
+    ctx.drawImage(seq.frames[i], seq.x + ox, seq.y + oy);
   }
 
   /**
@@ -519,11 +535,18 @@ export class TaikoRenderer implements FrameRenderer {
   private drawClearParts(ctx: Ctx2D, e: number): void {
     const P = this.skin.endAnim!.clearParts!;
     const u = this.height / 720;
-    const v = Math.min(300, Math.floor(e / 22));
+    // Continuous counter value (the original steps every 22ms); in-between
+    // values are interpolated so the motion is smooth at 60/120fps.
+    const v = Math.min(300, e / 22);
     const Y = 210;
     const base = ctx.globalAlpha;
     const SCALE = [1.04, 1.11, 1.15, 1.19, 1.23, 1.26, 1.3, 1.31, 1.32, 1.32, 1.32, 1.3, 1.3, 1.26, 1.25, 1.19, 1.15, 1.11, 1.05, 1.0];
     const ALPHA = [43, 85, 128, 170, 213, 255];
+    const lerpTable = (tbl: number[], k: number, after: number) => {
+      if (k >= tbl.length - 1) return k >= tbl.length ? after : tbl[tbl.length - 1];
+      const i = Math.floor(k);
+      return tbl[i] + (tbl[i + 1] - tbl[i]) * (k - i);
+    };
     const gw = P.text.width / 5; // 90px glyphs at 720p
     const gh = P.text.height;
     const glyphX = [634, 692, 750, 819, 890];
@@ -531,9 +554,9 @@ export class TaikoRenderer implements FrameRenderer {
       const v0 = 17 + 2 * i;
       if (v < v0) continue;
       const k = v - v0;
-      const sy = k <= 19 ? SCALE[k] : 1;
+      const sy = lerpTable(SCALE, k, 1);
       const y = (Y + (i === 4 ? 2 : 0)) * u;
-      ctx.globalAlpha = base * (k <= 19 ? (ALPHA[k] ?? 255) / 255 : 1);
+      ctx.globalAlpha = base * lerpTable(ALPHA, k, 255) / 255;
       // Scaled vertically about the bottom edge.
       ctx.drawImage(P.text, i * gw, 0, gw, gh, glyphX[i] * u, y - gh * (sy - 1), gw, gh * sy);
     }
@@ -544,23 +567,26 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.globalAlpha = base;
     const cy = (Y - 30) * u;
     const draw = (im: ImageSource, x: number, sx = 1) => ctx.drawImage(im, x * u, cy, im.width * sx, im.height);
-    if (v <= 11) {
+    if (v < 12) {
       draw(P.l[1], 697);
       draw(P.r[1], 738);
-    } else if (v <= 35) {
-      draw(P.l[0], 697 - (v - 12) * 10);
-      draw(P.r[0], 738 + (v - 12) * 10);
-    } else if (v <= 46) {
+    } else if (v < 36) {
+      // The original jumps from 12·10 to 35·10px; slide continuously instead.
+      const d = Math.min(23, v - 12) * 10;
+      draw(P.l[0], 697 - d);
+      draw(P.r[0], 738 + d);
+    } else if (v < 47) {
       const RET = [1.0, 0.99, 0.98, 0.97, 0.96, 0.95, 0.96, 0.97, 0.98, 0.99, 1.0];
-      const f = RET[v - 36];
+      const f = lerpTable(RET, v - 36, 1);
       draw(P.l[0], 466, f);
       draw(P.r[0], 1136 - 180 * f, f);
     } else {
-      const n = v <= 49 ? 1 : v <= 54 ? 2 : v <= 58 ? 3 : 4;
+      const n = v < 50 ? 1 : v < 55 ? 2 : v < 59 ? 3 : 4;
       draw(P.l[n], 466);
       draw(P.r[n], 956);
     }
   }
+
 
   // ---------------------------------------------------------------- loading screen
 
