@@ -92,6 +92,7 @@ export const OPENTAIKO_LAYOUT: SkinLayout = {
   nameplateOutline: true,
   scoreAdd: [27, 279],
   loadingTransition: 'curtain',
+  loadingTitleNoSubtitleOffset: 15,
 };
 
 /**
@@ -169,6 +170,8 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     loadingBackground: 'Graphics/4_SongLoading/Bg.png',
     loadingChara: 'Graphics/4_SongLoading/Chara.png',
     loadingPlate: 'Graphics/4_SongLoading/Plate.png',
+    loadingBackgroundWait: 'Graphics/4_SongLoading/Bg_Wait.png',
+    loadingFade: 'Graphics/4_SongLoading/Fade.png',
     nameplate: 'Graphics/NamePlate.png',
     scoreAdd: `${G}/6_Taiko/Score_1P.png`,
     gogoSplash: `${G}/10_Effects/GoGoSplash.png`,
@@ -176,10 +179,15 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
   sounds: {
     don: 'Sounds/Taiko/dong.ogg',
     ka: 'Sounds/Taiko/ka.ogg',
+    // Alternatives separated by '|': TJAPlayer3/Nijiiro names first, then OpenTaiko's.
+    endClear: 'Sounds/Clear.ogg',
+    endFullCombo: 'Sounds/Full combo.ogg|Sounds/FullCombo.ogg',
+    endDondaFullCombo: 'Sounds/Donda Full Combo.ogg|Sounds/AllPerfect.ogg',
   },
   layout: OPENTAIKO_LAYOUT,
   hitEffect: { dir: `${G}/10_Effects/Hit` },
   gaugeRainbow: { dir: `${G}/7_Gauge/Rainbow` },
+  endAnim: { dir: `${G}/9_End` },
 };
 
 /**
@@ -266,6 +274,7 @@ export const OPENTAIKO_720_LAYOUT: SkinLayout = {
   nameplateOutline: true,
   scoreAdd: [20, 186],
   loadingTransition: 'curtain',
+  loadingTitleNoSubtitleOffset: 15,
 };
 
 /**
@@ -420,6 +429,8 @@ export function applyOpenTaikoIni(
     y: gsy.length ? gsy : l.gogoSplash.y,
     rotate: game.Game_Effect_GoGoSplash_Rotate !== undefined ? /^(1|true)$/i.test(game.Game_Effect_GoGoSplash_Rotate.trim()) : l.gogoSplash.rotate,
   };
+  const nso = nums(game.SongLoading_Title_NoSubtitle_Offset)[0];
+  if (nso !== undefined) l.loadingTitleNoSubtitleOffset = nso;
   // tja2vid extension: SongLoading_Transition=fade|curtain
   const tr = game.SongLoading_Transition?.trim().toLowerCase();
   if (tr === 'fade' || tr === 'curtain') l.loadingTransition = tr;

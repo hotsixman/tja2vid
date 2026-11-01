@@ -77,10 +77,12 @@ export const IMAGE_KEYS = [
   'nameplate',
   'scoreAdd',
   'gogoSplash',
+  'loadingBackgroundWait',
+  'loadingFade',
 ] as const;
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 
-export const SOUND_KEYS = ['don', 'ka', 'balloonPop'] as const;
+export const SOUND_KEYS = ['don', 'ka', 'balloonPop', 'endClear', 'endFullCombo', 'endDondaFullCombo'] as const;
 export type SoundKey = (typeof SOUND_KEYS)[number];
 
 type XY = [number, number];
@@ -196,6 +198,8 @@ export interface SkinLayout {
    * ones tilt outwards.
    */
   gogoSplash: { frame: [number, number, number]; frameMs: number; x: number[]; y: number[]; rotate: boolean };
+  /** Extra downward offset (720p px) of the loading title when the song has no subtitle (OpenTaiko: 15). */
+  loadingTitleNoSubtitleOffset: number;
   /** How the loading screen gives way to play: crossfade, or split open like a curtain. */
   loadingTransition: 'fade' | 'curtain';
 }
@@ -221,6 +225,12 @@ export interface SkinManifest {
    * `<dir>/Great/0.png …`, `Great_Big`, `Good`, `Good_Big` (OpenTaiko 10_Effects/Hit).
    */
   hitEffect?: { dir: string; frameMs?: number };
+  /**
+   * Result animations (TJAPlayer3 9_End format): `<dir>/FullCombo/0.png …`,
+   * `<dir>/DondaFullCombo/…` frame sequences, and the Clear parts
+   * `<dir>/Clear/Clear_L_0..4.png, Clear_R_0..4.png, Clear_Text.png, Clear_Text_Effect.png`.
+   */
+  endAnim?: { dir: string };
   /** Rainbow gauge frames shown when the gauge is full: `<dir>/0.png …` (OpenTaiko 7_Gauge/Rainbow). */
   gaugeRainbow?: { dir: string; frameMs?: number };
   /**
@@ -329,6 +339,10 @@ export interface CharacterManifest {
   balloonY?: number;
   /** Resolution the frames were drawn for; frames are scaled to the skin resolution. */
   resolution?: [number, number];
+  /** TJAPlayer3: ms per frame for the balloon animations (Game_Chara_Balloon_Timer). */
+  balloonTimer?: number;
+  /** TJAPlayer3: fade-out after a popped/missed balloon, ms (Game_Chara_Balloon_FadeOut). */
+  balloonFadeOut?: number;
   states?: Partial<Record<CharaState, CharaStateConfig>>;
 }
 
@@ -337,9 +351,27 @@ export interface LoadedCharacter {
   y: number;
   /** Draw scale (skin resolution / character resolution). */
   scale: number;
+  /** Fade-out after Balloon_Broke / Balloon_Miss finish (ms). */
+  balloonFadeOutMs: number;
   balloonX: number;
   balloonY: number;
   states: Partial<Record<CharaState, { frames: ImageSource[]; motion: number[]; beat: number }>>;
+}
+
+/** A frame sequence drawn at (x, y) in skin pixels; the last frame is held. */
+export interface EndSequence {
+  frames: ImageSource[];
+  frameMs: number;
+  x: number;
+  y: number;
+}
+
+export interface LoadedEndAnim {
+  fullCombo?: EndSequence;
+  dondaFullCombo?: EndSequence;
+  clear?: EndSequence;
+  /** TJAPlayer3 Clear animation parts (taiko pair opening over the "クリア成功" text). */
+  clearParts?: { l: ImageSource[]; r: ImageSource[]; text: ImageSource; effect?: ImageSource };
 }
 
 export interface LoadedDancer {
@@ -361,6 +393,7 @@ export interface LoadedSkin {
   character?: LoadedCharacter;
   hitEffect?: { great: ImageSource[]; greatBig: ImageSource[]; frameMs: number };
   gaugeRainbow?: { frames: ImageSource[]; frameMs: number };
+  endAnim?: LoadedEndAnim;
   /** Images used by background layers, keyed by BackgroundLayer.image. */
   layerImages: Record<string, ImageSource>;
 }

@@ -9,7 +9,9 @@ Svelte 5 + Vite로 만들었고, 모든 처리(채보 해석, 렌더링, 인코�
 - 인코딩 자동 감지 (BOM → UTF-8 → Shift_JIS), 수동 선택 가능 (EUC-KR/CP949, GB18030 등)
 - 오토플레이 시뮬레이션: 판정, 콤보, 점수, 게이지, 연타/풍선 (연타 속도 조절)
 - 화면: 노트 + 노트 아래 문구, 마디선, 판정, 폭발 이펙트, 날아가는 노트, 레인 플래시, 북 타격, 콤보, 점수, 난이도, 클리어 게이지와 혼, GOGO 타임, 연타/풍선 카운터, 배경, 댄서, 캐릭터, 곡 제목
-- 플레이 전 곡 로딩 화면 (옵션, 길이 조절)
+- 플레이 전 곡 로딩 화면 (옵션, 길이 조절) — 니지이로 아케이드 영상에서 잰 타이밍대로 캐릭터·제목판·제목이 나오고, 스킨의 `Fade.png` 커튼이 열리며 플레이로 넘어갑니다
+- 마지막 노트 뒤 결과 연출: 클리어 / 풀콤보 / 동더풀콤보 (TJAPlayer3 `9_End` 형식, 결과 효과음 포함). 오토플레이는 항상 전량이라 기본값은 동더풀콤보이며 옵션에서 바꿀 수 있습니다
+- 미리보기 오디오는 곡·음원·스킨이 바뀔 때만 자동으로 합성합니다. 설정을 바꾼 뒤에는 "오디오 다시 합성" 버튼으로 다시 합성합니다(영상 만들기는 항상 새로 합성)
 - 시간이 걸리는 작업(스킨·음원 불러오기, 오디오 준비, 영상 만들기) 중에는 진행 상황 창이 떠서 다른 조작을 막습니다
 - 실시간 미리보기 (타격음 포함)
 - **60fps / 120fps** 선택, 720p ~ 4K 해상도, 화질 선택
@@ -59,7 +61,9 @@ OpenTaiko / TJAPlayer3 형식에서는 다음도 자동으로 인식합니다.
 
 - **폰트:** `Fonts/` 폴더(또는 스킨 루트)의 `.otf` / `.ttf` / `.woff2` 파일을 곡 제목과 로딩 화면에 사용합니다.
 - **캐릭터:** `Graphics/5_Game/1_Chara/` 또는 `Graphics/11_Characters/<n>/` (+ `CharaConfig.txt`). Normal / Clear / GoGo 반복 동작과 `_Max`(게이지 MAX), 10콤보 · GOGO 시작 · 클리어 · 혼 MAX · 풍선 동작을 OpenTaiko 규칙대로 재생합니다.
-- **로딩 화면:** `Graphics/4_SongLoading/Bg.png · Chara.png · Plate.png`와 `SongLoading_*` 좌표.
+- **로딩 화면:** `Graphics/4_SongLoading/Bg.png · Bg_Wait.png · Chara.png · Plate.png · Fade.png`와 `SongLoading_*` 좌표. 부제가 없을 때 제목을 내리는 양은 `SongLoading_Title_NoSubtitle_Offset`(기본 15, 720p 기준)로 바꿀 수 있습니다.
+- **결과 연출:** `Graphics/5_Game/9_End/FullCombo/`, `DondaFullCombo/`(33ms/프레임), `Clear/Clear_L_*, Clear_R_*, Clear_Text*`(TJAPlayer3 클리어 연출)와 `Sounds/Clear.ogg`, `Full combo.ogg`, `Donda Full Combo.ogg`.
+- **풍선 캐릭터 연출:** `Game_Chara_Balloon_Timer`(프레임당 ms)와 `Game_Chara_Balloon_FadeOut`을 따르며 BPM과 무관합니다.
 
 ### `skin.json` 예시
 

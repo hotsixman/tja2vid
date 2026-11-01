@@ -1,5 +1,6 @@
 import { lowerBound, stepAt, type Hit, type Judgement, type Playthrough, type RollState } from '../sim/autoplay';
-import type { CharaState, ImageKey, ImageSource, LoadedSkin } from '../skin/types';
+import type { CharaState, EndSequence, ImageKey, ImageSource, LoadedSkin } from '../skin/types';
+import { endAnimationTime, type EndResult } from '../endResult';
 import type { Note, NoteType } from '../tja/types';
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -9,6 +10,8 @@ export interface RenderOptions {
   showTitle: boolean;
   /** Draw the skin's dancers (if it has any). Defaults to true. */
   showDancer?: boolean;
+  /** Result animation after the last note. Defaults to 'dondaFullCombo' (perfect autoplay). */
+  endResult?: EndResult;
   /** Player nameplate; omitted = not drawn. */
   nameplate?: NameplateInfo;
   /** Max judgement texts on screen at once (newest kept). Defaults to 2. */
@@ -50,7 +53,10 @@ const SOUL_FLASH_FRAME_MS = 19;
 const COMBO_POP_MS = 90;
 const ROLL_LINGER_MS = 1000;
 const MIN_COMBO_SHOWN = 10;
-const INTRO_TRANSITION_MS = 450;
+/** Loading-screen → play transition length (curtain: measured from arcade footage). */
+const INTRO_TRANSITION_MS = 360;
+/** Arcade loading-screen length the timings below were measured for (ms). */
+const LOADING_REF_MS = 4284;
 /** OpenTaiko's score bounce (13ms per step). */
 const SCORE_SCALE = [1, 1.05, 1.1, 1.11, 1.12, 1.125, 1.12, 1.08, 1.065, 1.03, 1.015, 1];
 
@@ -293,7 +299,7 @@ export class TaikoRenderer implements FrameRenderer {
 
     if (intro && t < intro.end + INTRO_TRANSITION_MS) {
       const p = (t - intro.end) / INTRO_TRANSITION_MS;
-      if (this.skin.manifest.layout.loadingTransition === 'curtain') this.drawCurtain(ctx, easeOutCubic(p));
+      if (this.skin.manifest.layout.loadingTransition === 'curtain') this.drawCurtain(ctx, p);
       else {
         ctx.globalAlpha = 1 - p;
         this.drawLoading(ctx, t);
@@ -323,58 +329,146 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawRollAndBalloon(ctx, t);
     this.drawJudgeText(ctx, t);
     this.drawFlyingNotes(ctx, t);
+    this.drawEndAnimation(ctx, t);
     if (this.opts.showTitle) this.drawTitle(ctx);
+  }
+
+  // ---------------------------------------------------------------- result animation
+
+  private drawEndAnimation(ctx: Ctx2D, t: number): void {
+    const result = this.opts.endResult ?? 'dondaFullCombo';
+    const anim = this.skin.endAnim;
+    if (result === 'none' || !anim) return;
+    const e = t - endAnimationTime(this.play);
+    if (e < 0) return;
+    if (result === 'clear') {
+      if (anim.clearParts) this.drawClearParts(ctx, e);
+      else if (anim.clear) this.drawEndSequence(ctx, anim.clear, e);
+      return;
+    }
+    const seq = result === 'fullCombo' ? anim.fullCombo : (anim.dondaFullCombo ?? anim.fullCombo);
+    if (seq) this.drawEndSequence(ctx, seq, e);
+  }
+
+  /** Frame sequence; the last frame stays on screen. */
+  private drawEndSequence(ctx: Ctx2D, seq: EndSequence, e: number): void {
+    const f = seq.frames[Math.min(seq.frames.length - 1, Math.floor(e / seq.frameMs))];
+    ctx.drawImage(f, seq.x, seq.y);
+  }
+
+  /**
+   * TJAPlayer3 "クリア成功" animation (CAct演奏Drums演奏終了演出), on its 22ms
+   * counter with the original 720p coordinates scaled to the skin: the five
+   * text glyphs pop in one after another, a glow passes over them, and the two
+   * taiko characters slide apart from the centre and settle on either side.
+   */
+  private drawClearParts(ctx: Ctx2D, e: number): void {
+    const P = this.skin.endAnim!.clearParts!;
+    const u = this.height / 720;
+    const v = Math.min(300, Math.floor(e / 22));
+    const Y = 210;
+    const base = ctx.globalAlpha;
+    const SCALE = [1.04, 1.11, 1.15, 1.19, 1.23, 1.26, 1.3, 1.31, 1.32, 1.32, 1.32, 1.3, 1.3, 1.26, 1.25, 1.19, 1.15, 1.11, 1.05, 1.0];
+    const ALPHA = [43, 85, 128, 170, 213, 255];
+    const gw = P.text.width / 5; // 90px glyphs at 720p
+    const gh = P.text.height;
+    const glyphX = [634, 692, 750, 819, 890];
+    for (let i = 0; i < 5; i++) {
+      const v0 = 17 + 2 * i;
+      if (v < v0) continue;
+      const k = v - v0;
+      const sy = k <= 19 ? SCALE[k] : 1;
+      const y = (Y + (i === 4 ? 2 : 0)) * u;
+      ctx.globalAlpha = base * (k <= 19 ? (ALPHA[k] ?? 255) / 255 : 1);
+      // Scaled vertically about the bottom edge.
+      ctx.drawImage(P.text, i * gw, 0, gw, gh, glyphX[i] * u, y - gh * (sy - 1), gw, gh * sy);
+    }
+    if (P.effect && v >= 50 && v < 90) {
+      ctx.globalAlpha = base * (v < 70 ? (v - 50) / 20 : 1 - (v - 70) / 20);
+      ctx.drawImage(P.effect, 634 * u, (Y - 2) * u);
+    }
+    ctx.globalAlpha = base;
+    const cy = (Y - 30) * u;
+    const draw = (im: ImageSource, x: number, sx = 1) => ctx.drawImage(im, x * u, cy, im.width * sx, im.height);
+    if (v <= 11) {
+      draw(P.l[1], 697);
+      draw(P.r[1], 738);
+    } else if (v <= 35) {
+      draw(P.l[0], 697 - (v - 12) * 10);
+      draw(P.r[0], 738 + (v - 12) * 10);
+    } else if (v <= 46) {
+      const RET = [1.0, 0.99, 0.98, 0.97, 0.96, 0.95, 0.96, 0.97, 0.98, 0.99, 1.0];
+      const f = RET[v - 36];
+      draw(P.l[0], 466, f);
+      draw(P.r[0], 1136 - 180 * f, f);
+    } else {
+      const n = v <= 49 ? 1 : v <= 54 ? 2 : v <= 58 ? 3 : 4;
+      draw(P.l[n], 466);
+      draw(P.r[n], 956);
+    }
   }
 
   // ---------------------------------------------------------------- loading screen
 
   /**
-   * Song loading screen, timed like the arcade: the chara slides in, the plate
-   * and title fade in, then near the end the title, plate and chara fade out
-   * leaving only the background (which the curtain transition then opens).
+   * Song loading screen, timed from Nijiiro arcade footage (ms from the start
+   * of the screen; D = its length, i.e. when the curtain starts):
+   *   0–250    characters fade in while sliding in diagonally from the top corners
+   *   184–317  plate and sparkle background (Bg_Wait) fade in
+   *   700      title/subtitle appear; characters settle 6px right / 13px down
+   *   D−317    title disappears
+   *   D−300…−167  plate and sparkles fade out
+   *   D−200…−100  characters fade out, leaving the plain background
+   * Timings are compressed proportionally for screens shorter than the arcade's.
    */
   private drawLoading(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
     const intro = this.opts.intro!;
     const D = intro.end - intro.start;
-    const e = t - intro.start;
-    const k = Math.min(1, D / 3000); // compress the timings for short intros
-    const ramp = (from: number, len: number) => Math.min(1, Math.max(0, (e - from) / Math.max(1, len)));
+    const k = Math.min(1, D / LOADING_REF_MS);
+    const e = (t - intro.start) / k; // time on the arcade's clock
+    const end = D / k;
+    const ramp = (from: number, len: number) => Math.min(1, Math.max(0, (e - from) / len));
     const curtain = L.loadingTransition === 'curtain';
+    const u = this.height / 720;
     const base = ctx.globalAlpha;
 
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, this.width, this.height);
-    ctx.globalAlpha = base * ramp(0, 250 * k);
     this.drawLoadingBackground(ctx, 0, this.width);
 
-    // When the curtain follows, everything but the background fades out first.
-    const outro = curtain ? 1 - ramp(D - 650 * k, 300 * k) : 1;
-    const charaOut = curtain ? 1 - ramp(D - 450 * k, 300 * k) : 1;
-
-    const chara = this.img('loadingChara');
-    if (chara && charaOut > 0) {
-      const slide = 1 - easeOutCubic(ramp(0, 450 * k));
-      const [mx, my] = L.loadingCharaMove;
-      const half = chara.width / 2;
-      ctx.globalAlpha = base * charaOut;
-      // Left half slides in from the left, right half from the right.
-      ctx.drawImage(chara, 0, 0, half, chara.height, -mx * slide, my * slide, half, chara.height);
-      ctx.drawImage(chara, half, 0, half, chara.height, half + mx * slide, my * slide, half, chara.height);
+    const waitIn = ramp(184, 133) * (curtain ? 1 - ramp(end - 300, 133) : 1);
+    const wait = this.img('loadingBackgroundWait');
+    if (wait && waitIn > 0) {
+      ctx.globalAlpha = base * waitIn;
+      ctx.drawImage(wait, 0, 0, this.width, this.height);
     }
 
-    const plateIn = ramp(200 * k, 300 * k);
+    const chara = this.img('loadingChara');
+    const charaA = ramp(0, 250) * (curtain ? 1 - ramp(end - 200, 100) : 1);
+    if (chara && charaA > 0) {
+      // Diagonal slide-in (ease-out), then a small settle when the title appears.
+      const slide = 200 * Math.pow(1 - ramp(0, 317), 1.2);
+      const settled = e >= 700;
+      const dx = (-slide - (settled ? 0 : 6)) * u;
+      const dy = (-slide - (settled ? 0 : 13)) * u;
+      const half = chara.width / 2;
+      const sx = this.width / chara.width;
+      const sy = this.height / chara.height;
+      ctx.globalAlpha = base * charaA;
+      ctx.drawImage(chara, 0, 0, half, chara.height, dx, dy, half * sx, chara.height * sy);
+      ctx.drawImage(chara, half, 0, half, chara.height, half * sx - dx, dy, half * sx, chara.height * sy);
+    }
+
+    const plateA = ramp(184, 133) * (curtain ? 1 - ramp(end - 300, 133) : 1);
     const plate = this.img('loadingPlate');
-    if (plate && plateIn * outro > 0) {
-      ctx.globalAlpha = base * plateIn * outro;
+    if (plate && plateA > 0) {
+      ctx.globalAlpha = base * plateA;
       ctx.drawImage(plate, L.loadingPlate[0] - plate.width / 2, L.loadingPlate[1] - plate.height / 2);
     }
 
-    const textAlpha = ramp(350 * k, 300 * k) * (curtain ? 1 - ramp(D - 800 * k, 200 * k) : 1);
-    if (textAlpha > 0) {
-      ctx.globalAlpha = base * textAlpha;
-      // Like OpenTaiko: without a subtitle the title moves down 15px (720p).
-      const noSub = this.opts.subtitle ? 0 : 15 * (this.height / 720);
+    const showText = e >= 700 && (!curtain || e < end - 317);
+    if (showText) {
+      ctx.globalAlpha = base;
+      const noSub = this.opts.subtitle ? 0 : L.loadingTitleNoSubtitleOffset * u;
       this.drawCenteredText(
         ctx,
         this.opts.title,
@@ -411,23 +505,28 @@ export class TaikoRenderer implements FrameRenderer {
   }
 
   /**
-   * Arcade-style transition: the loading background splits at the centre into
-   * two curtains with curved inner edges that slide apart (p: 0 closed → 1 open).
+   * Curtain transition (p: 0 closed → 1 open, linear like the arcade). With
+   * the skin's Fade.png (a curtain drawing), its two halves slide apart;
+   * otherwise the loading background is split along curved edges.
    */
   private drawCurtain(ctx: Ctx2D, p: number): void {
     const W = this.width;
     const H = this.height;
+    const fade = this.img('loadingFade');
+    if (fade) {
+      const half = fade.width / 2;
+      const shift = (W / 2) * p;
+      ctx.drawImage(fade, 0, 0, half, fade.height, -shift, 0, W / 2, H);
+      ctx.drawImage(fade, half, 0, half, fade.height, W / 2 + shift, 0, W / 2, H);
+      return;
+    }
     const shift = (W / 2) * p;
     const bulge = W * 0.14 * Math.sin(Math.min(1, p * 1.6) * Math.PI * 0.5);
     for (const side of [-1, 1] as const) {
       ctx.save();
       ctx.beginPath();
       const steps = 24;
-      const edge = (y: number) => {
-        // Inner edge: gathered at the bottom, like a drape being pulled aside.
-        const f = (y / H) ** 1.6;
-        return W / 2 - shift - bulge * f;
-      };
+      const edge = (y: number) => W / 2 - shift - bulge * (y / H) ** 1.6;
       if (side === -1) {
         ctx.moveTo(0, 0);
         for (let i = 0; i <= steps; i++) ctx.lineTo(edge((i / steps) * H), (i / steps) * H);
@@ -440,7 +539,6 @@ export class TaikoRenderer implements FrameRenderer {
       ctx.closePath();
       ctx.clip();
       this.drawLoadingBackground(ctx, side * shift, W);
-      // Soft shadow along the inner edge for depth.
       ctx.lineWidth = 18;
       ctx.strokeStyle = 'rgba(0,0,0,0.18)';
       ctx.stroke();
@@ -529,7 +627,8 @@ export class TaikoRenderer implements FrameRenderer {
         start: e.time,
         state: e.state,
         // Balloon states run in seconds, others in beats (as in OpenTaiko).
-        end: e.loopUntil ?? (balloon ? e.time + st.beat * 1000 : Infinity),
+        // Popped/missed balloon: play once, then fade out (TJAPlayer3 Balloon_FadeOut).
+        end: e.loopUntil ?? (balloon ? e.time + st.beat * 1000 + ch.balloonFadeOutMs : Infinity),
         endBeat: balloon || e.loopUntil !== undefined ? Infinity : this.beatsAt(e.time) + st.beat,
         loop: e.loopUntil !== undefined,
       };
@@ -567,33 +666,59 @@ export class TaikoRenderer implements FrameRenderer {
       } else hi = mid - 1;
     }
     const seg = idx >= 0 ? segs[idx] : undefined;
+    let fadeOut = 0; // 0..1 while a finished balloon animation fades out
     if (seg && this.segmentActive(seg, t)) {
       const st = ch.states[seg.state]!;
       state = seg.state;
       balloon = seg.state.startsWith('Balloon_');
       if (seg.loop) progress = (((t - seg.start) / 1000 / st.beat) % 1 + 1) % 1;
-      else if (balloon) progress = (t - seg.start) / (st.beat * 1000);
-      else progress = (this.beatsAt(t) - (seg.endBeat - st.beat)) / st.beat;
-    } else {
-      const gauge = stepAt(this.play.gauge, t);
-      const max = gauge >= 100;
-      const cleared = gauge >= this.play.clearThreshold;
-      const candidates: CharaState[] = this.isGogo(t)
-        ? max
-          ? ['GoGo_Max', 'GoGo', 'Normal']
-          : ['GoGo', 'Normal']
-        : max
-          ? ['Clear_Max', 'Clear', 'Normal']
-          : cleared
-            ? ['Clear', 'Normal']
-            : ['Normal'];
-      state = candidates.find((s) => ch.states[s]) ?? null;
-      if (!state) return;
-      const cycle = this.beatsAt(t) / Math.max(1e-6, ch.states[state]!.beat);
-      progress = cycle - Math.floor(cycle);
+      else if (balloon) {
+        const dur = st.beat * 1000;
+        progress = Math.min(0.9999, (t - seg.start) / dur);
+        if (t - seg.start > dur && ch.balloonFadeOutMs > 0) fadeOut = Math.min(1, (t - seg.start - dur) / ch.balloonFadeOutMs);
+      } else progress = (this.beatsAt(t) - (seg.endBeat - st.beat)) / st.beat;
     }
+    if (fadeOut > 0) {
+      // The normal pose fades back in under the fading balloon pose.
+      const base = ctx.globalAlpha;
+      ctx.globalAlpha = base * fadeOut;
+      this.drawIdleCharacter(ctx, t);
+      ctx.globalAlpha = base * (1 - fadeOut);
+      this.drawCharaFrame(ctx, state!, progress, true);
+      ctx.globalAlpha = base;
+      return;
+    }
+    if (state) {
+      this.drawCharaFrame(ctx, state, progress, balloon);
+      return;
+    }
+    this.drawIdleCharacter(ctx, t);
+  }
 
-    const st = ch.states[state!]!;
+  /** Looping Normal / Clear / GoGo (± _Max) pose for the current gauge and GoGo state. */
+  private drawIdleCharacter(ctx: Ctx2D, t: number): void {
+    const ch = this.skin.character!;
+    const gauge = stepAt(this.play.gauge, t);
+    const max = gauge >= 100;
+    const cleared = gauge >= this.play.clearThreshold;
+    const candidates: CharaState[] = this.isGogo(t)
+      ? max
+        ? ['GoGo_Max', 'GoGo', 'Normal']
+        : ['GoGo', 'Normal']
+      : max
+        ? ['Clear_Max', 'Clear', 'Normal']
+        : cleared
+          ? ['Clear', 'Normal']
+          : ['Normal'];
+    const state = candidates.find((s) => ch.states[s]);
+    if (!state) return;
+    const cycle = this.beatsAt(t) / Math.max(1e-6, ch.states[state]!.beat);
+    this.drawCharaFrame(ctx, state, cycle - Math.floor(cycle), false);
+  }
+
+  private drawCharaFrame(ctx: Ctx2D, state: CharaState, progress: number, balloon: boolean): void {
+    const ch = this.skin.character!;
+    const st = ch.states[state]!;
     const m = st.motion;
     const frame = st.frames[m[Math.max(0, Math.min(m.length - 1, Math.floor(progress * m.length)))]];
     if (!frame) return;
@@ -1221,10 +1346,8 @@ export class TaikoRenderer implements FrameRenderer {
         const bk = `balloonBreaking${stage}` as ImageKey;
         const shake = Math.floor(t / 30) % 2 ? 3 : 0;
         this.draw(ctx, bk, L.balloon[0] + shake, L.balloon[1]);
-        const frame = this.img('balloon');
         this.draw(ctx, 'balloon', L.balloonFrame[0], L.balloonFrame[1]);
-        const centerX = L.balloonFrame[0] + (frame ? frame.width / 2 : 150) + 8;
-        this.drawDigits(ctx, 'rollNumber', remaining, centerX, L.balloonNumber[1], L.balloonNumberInterval[0]);
+        this.drawDigits(ctx, 'rollNumber', remaining, this.counterCenter(L.balloonNumber[0]), L.balloonNumber[1], L.balloonNumberInterval[0]);
         continue;
       }
 
@@ -1244,10 +1367,21 @@ export class TaikoRenderer implements FrameRenderer {
       if (elapsed >= 120) {
         const sinceHit = t - (r.hitTimes[hitsSoFar - 1] ?? first);
         const pop = sinceHit < 60 ? 1 + 0.15 * (1 - sinceHit / 60) : 1;
-        this.drawDigits(ctx, 'rollNumber', hitsSoFar, L.rollFrame[0] + fw / 2, L.rollNumber[1], L.balloonNumberInterval[0], pop);
+        this.drawDigits(ctx, 'rollNumber', hitsSoFar, this.counterCenter(L.rollNumber[0]), L.rollNumber[1], L.balloonNumberInterval[0], pop);
       }
       ctx.globalAlpha = 1;
     }
+  }
+
+  /**
+   * Centre of a roll/balloon counter. OpenTaiko places digit j's left edge at
+   * numX − interval·(j − n/2), which centres every digit group on
+   * numX + (interval + glyph width) / 2 whatever the digit count.
+   */
+  private counterCenter(numX: number): number {
+    const im = this.img('rollNumber');
+    const w = im ? im.width / 10 : 0;
+    return numX + (this.skin.manifest.layout.balloonNumberInterval[0] + w) / 2;
   }
 
   /** Index range [from, to) of the newest `max` items that started within `windowMs` before t. */

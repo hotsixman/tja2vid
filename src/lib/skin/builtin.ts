@@ -85,12 +85,12 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   gogoFireFrames: 7,
   balloon: [560, 96],
   balloonFrame: [700, 36],
-  balloonNumber: [0, 196],
+  balloonNumber: [752, 196], // centre = x + (interval + glyph)/2 = 840 (bubble centre)
   balloonNumberSize: [95, 113],
   balloonNumberInterval: [80, 0],
   rollFrame: [250, 20],
   rollFrameFrames: 5,
-  rollNumber: [0, 196],
+  rollNumber: [382, 196], // centre 470 (roll frame centre)
   title: [1890, 52],
   titleMaxWidth: 960,
   titleFontSize: 52,
@@ -110,6 +110,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   loadingSubtitleColor: '#ffd2ec',
   loadingSubtitleStroke: '#15121f',
   loadingTransition: 'fade',
+  loadingTitleNoSubtitleOffset: 0,
   nameplate: [12, 552],
   nameplateScale: 1,
   nameplateOutline: true,
@@ -1413,6 +1414,49 @@ function synthKa(sr = 48000): ArrayBuffer {
   return wav(out, sr);
 }
 
+/** Short major arpeggio jingle for the result animations. */
+function synthJingle(notes: number[], sr = 48000): ArrayBuffer {
+  const step = 0.11;
+  const len = step * notes.length + 0.6;
+  const out = new Float32Array(Math.floor(sr * len));
+  notes.forEach((midi, k) => {
+    const f = 440 * 2 ** ((midi - 69) / 12);
+    const start = Math.floor(k * step * sr);
+    const dur = k === notes.length - 1 ? 0.6 : step * 1.6;
+    for (let i = 0; i < dur * sr && start + i < out.length; i++) {
+      const t = i / sr;
+      const env = Math.min(1, t * 200) * Math.exp(-t * (k === notes.length - 1 ? 3 : 9));
+      out[start + i] += (Math.sin(2 * Math.PI * f * t) * 0.6 + Math.sin(4 * Math.PI * f * t) * 0.2) * env * 0.35;
+    }
+  });
+  return wav(out, sr);
+}
+
+// ------------------------------------------------------------------ result banners
+
+/** Result banner over the lane: text pops in with a bounce, then sparkles (24 frames × 40ms, last held). */
+function resultBanner(label: string, fill: (ctx: C2D) => string | CanvasGradient): OffscreenCanvas[] {
+  const FW = 1400;
+  const FH = 260;
+  const out: OffscreenCanvas[] = [];
+  for (let i = 0; i < 24; i++) {
+    const [c, ctx] = canvas(FW, FH);
+    const p = i / 23;
+    const pop = p < 0.3 ? easeOut(p / 0.3) * 1.15 : 1.15 - Math.min(1, (p - 0.3) / 0.2) * 0.15;
+    ctx.globalAlpha = Math.min(1, p / 0.15);
+    ctx.fillStyle = 'rgba(12,10,28,0.55)';
+    ctx.fillRect(0, FH / 2 - 70 * Math.min(1, p / 0.2), FW, 140 * Math.min(1, p / 0.2));
+    ctx.save();
+    ctx.translate(FW / 2, FH / 2);
+    ctx.scale(pop, pop);
+    text(ctx, label, 0, 4, 96, fill(ctx), COLOR.outline, 'center', 900);
+    ctx.restore();
+    if (p > 0.3) sparkles(ctx, FW / 2, FH / 2, 260 + p * 160, 14, 8 * (1 - p) + 3, '#fff7c2', 1.2 - p, p * 2);
+    out.push(c);
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ assemble
 
 let cached: Promise<LoadedSkin> | null = null;
@@ -1559,7 +1603,38 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
         };
       }),
     );
-    const character: LoadedCharacter = { x: 40, y: 10, balloonX: 40, balloonY: 10, scale: 1, states: characterStates };
+    const character: LoadedCharacter = {
+      x: 40,
+      y: 10,
+      balloonX: 40,
+      balloonY: 10,
+      scale: 1,
+      balloonFadeOutMs: 250,
+      states: characterStates,
+    };
+
+    const gold = (ctx: C2D) => {
+      const g = ctx.createLinearGradient(0, -40, 0, 50);
+      g.addColorStop(0, '#fff7c2');
+      g.addColorStop(1, COLOR.gold);
+      return g;
+    };
+    const rainbow = (ctx: C2D) => {
+      const g = ctx.createLinearGradient(-450, 0, 450, 0);
+      ['#ff5f5f', '#ffd25e', '#7cff8a', '#35c3ff', '#b98cff', '#ff5fa2'].forEach((col, i) => g.addColorStop(i / 5, col));
+      return g;
+    };
+    const banner = async (label: string, fill: (ctx: C2D) => string | CanvasGradient) => ({
+      frames: await Promise.all(resultBanner(label, fill).map(bitmap)),
+      frameMs: 40,
+      x: 520,
+      y: 260,
+    });
+    const endAnim = {
+      clear: await banner('CLEAR!', () => '#ffffff'),
+      fullCombo: await banner('FULL COMBO!', gold),
+      dondaFullCombo: await banner('DONDERFUL COMBO!', rainbow),
+    };
 
     const gaugeRainbow = { frames: await Promise.all(rainbowFrames().map(bitmap)), frameMs: 50 };
 
@@ -1567,7 +1642,14 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       gaugeRainbow,
       manifest: BUILTIN_MANIFEST,
       images,
-      sounds: { don: synthDon(), ka: synthKa() },
+      sounds: {
+        don: synthDon(),
+        ka: synthKa(),
+        endClear: synthJingle([72, 76, 79, 84]),
+        endFullCombo: synthJingle([72, 76, 79, 84, 88]),
+        endDondaFullCombo: synthJingle([72, 76, 79, 84, 88, 91, 96]),
+      },
+      endAnim,
       fontFamily: FONT,
       dancer,
       character,

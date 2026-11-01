@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Preview from './lib/components/Preview.svelte';
   import BusyModal, { type BusyState } from './lib/components/BusyModal.svelte';
   import { decodeTja, ENCODINGS, type TjaEncoding } from './lib/tja/decode';
@@ -13,6 +13,7 @@
   import { clearDefaultSkin, loadDefaultSkinZip, saveDefaultSkin } from './lib/skin/storage';
   import { decodeAudio, mixSoundtrack } from './lib/audio/mix';
   import { computeTimeline } from './lib/timeline';
+  import { END_RESULTS, type EndResult } from './lib/endResult';
   import { exportVideo, isExportSupported, type FrameRate, type QualityName } from './lib/video/export';
 
   const SAMPLE_RATE = 48000;
@@ -66,7 +67,8 @@
   let maxHitEffects = $state(1);
   let maxScoreAdds = $state(10);
   let showIntro = $state(true);
-  let introSec = $state(3);
+  let introSec = $state(4.3);
+  let endResult = $state<EndResult>('dondaFullCombo');
 
   // ---------------------------------------------------------------- busy modal
   // Long-running work registers a task; the newest one is shown in a modal that blocks the UI.
@@ -197,6 +199,7 @@
     maxJudgeTexts,
     maxHitEffects,
     maxScoreAdds,
+    endResult,
     nameplate: showNameplate
       ? { name: npName }
       : undefined,
@@ -214,41 +217,77 @@
   });
 
   // ---------------------------------------------------------------- soundtrack
+  // The preview soundtrack is mixed automatically only when the song, the audio
+  // or the skin changes. Option changes (course, volumes, timing…) only mark it
+  // as stale; "오디오 다시 합성" remixes it. Exports always mix a fresh copy.
   let soundtrack = $state<AudioBuffer | null>(null);
   let mixing = $state(false);
+  let mixedKey = $state('');
   let mixVersion = 0;
 
-  $effect(() => {
+  const objIds = new WeakMap<object, number>();
+  let objSeq = 0;
+  const idOf = (o: object | null | undefined) => {
+    if (!o) return 0;
+    if (!objIds.has(o)) objIds.set(o, ++objSeq);
+    return objIds.get(o)!;
+  };
+  const mixKey = $derived(
+    JSON.stringify([
+      idOf(play),
+      idOf(skin),
+      idOf(music),
+      timeline.leadInMs,
+      timeline.durationMs,
+      musicVolume,
+      hitVolume,
+      endResult,
+    ]),
+  );
+  const soundtrackStale = $derived(!!soundtrack && !mixing && mixedKey !== mixKey);
+
+  async function remix() {
     const p = play;
     const s = skin;
-    const m = music;
-    const t = timeline;
-    const mv = musicVolume;
-    const hv = hitVolume;
     if (!p || !s) {
       soundtrack = null;
       return;
     }
     const version = ++mixVersion;
+    const key = mixKey;
     mixing = true;
-    const timer = setTimeout(async () => {
-      const task = beginTask({ title: '오디오 준비 중…', detail: '음원과 타격음을 합치고 있습니다.' });
-      try {
-        const buf = await mixSoundtrack(m, s, p, {
-          sampleRate: SAMPLE_RATE,
-          musicVolume: mv,
-          hitVolume: hv,
-          leadInMs: t.leadInMs,
-          durationMs: t.durationMs,
-        });
-        if (version === mixVersion) soundtrack = buf;
-      } catch (e) {
-        console.error(e);
-      } finally {
-        task.end();
-        if (version === mixVersion) mixing = false;
+    const task = beginTask({ title: '오디오 준비 중…', detail: '음원과 타격음을 합치고 있습니다.' });
+    try {
+      const buf = await mixSoundtrack(music, s, p, {
+        sampleRate: SAMPLE_RATE,
+        musicVolume,
+        hitVolume,
+        leadInMs: timeline.leadInMs,
+        durationMs: timeline.durationMs,
+        endResult,
+      });
+      if (version === mixVersion) {
+        soundtrack = buf;
+        mixedKey = key;
       }
-    }, 250);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      task.end();
+      if (version === mixVersion) mixing = false;
+    }
+  }
+
+  // Auto-mix when the song (TJA), the audio file or the skin changes.
+  $effect(() => {
+    void parsed;
+    void music;
+    void skin;
+    untrack(() => {
+      soundtrack = null;
+      mixedKey = '';
+    });
+    const timer = setTimeout(() => untrack(() => void remix()), 50);
     return () => clearTimeout(timer);
   });
 
@@ -316,9 +355,7 @@
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     downloadUrl = '';
     abort = new AbortController();
-    const ctrl = abort;
     const started = performance.now();
-    const task = beginTask({ title: '영상 만드는 중…', detail: '오디오 믹싱 중…', onCancel: () => ctrl.abort() });
     try {
       const track = await mixSoundtrack(music, skin, play, {
         sampleRate: SAMPLE_RATE,
@@ -326,10 +363,11 @@
         hitVolume,
         leadInMs: timeline.leadInMs,
         durationMs: timeline.durationMs,
+        endResult,
       });
+      if (abort.signal.aborted) throw new DOMException('Export cancelled', 'AbortError');
       const r = new TaikoRenderer(skin, play, renderOpts);
       exportStatus = '렌더링 / 인코딩 중…';
-      task.update({ detail: exportStatus, progress: 0 });
       const result = await exportVideo(r, {
         fps,
         width: res.w,
@@ -344,7 +382,6 @@
           const elapsed = (performance.now() - started) / 1000;
           const eta = progress > 0 ? elapsed / progress - elapsed : 0;
           exportStatus = `렌더링 / 인코딩 중… ${done}/${total} 프레임 · 남은 시간 약 ${Math.ceil(eta)}초`;
-          task.update({ detail: `${done}/${total} 프레임 · 남은 시간 약 ${Math.ceil(eta)}초`, progress });
         },
       });
       downloadUrl = URL.createObjectURL(result.blob);
@@ -359,7 +396,6 @@
       exportStatus = (e as Error).name === 'AbortError' ? '취소되었습니다.' : `오류: ${(e as Error).message}`;
       console.error(e);
     } finally {
-      task.end();
       exporting = false;
       abort = null;
     }
@@ -508,6 +544,12 @@
         </label>
       </div>
       <label class="check"><input type="checkbox" bind:checked={showTitle} /> 곡 제목 표시</label>
+      <label>
+        결과 연출 (마지막 노트 후)
+        <select bind:value={endResult}>
+          {#each END_RESULTS as r (r.value)}<option value={r.value}>{r.label}</option>{/each}
+        </select>
+      </label>
       <label class="check">
         <input type="checkbox" bind:checked={showCharacter} disabled={!skin?.character} /> 캐릭터 표시
         {#if skin && !skin.character}<small class="hint">(이 스킨에는 캐릭터가 없음)</small>{/if}
@@ -554,6 +596,11 @@
 
     <section class="panel main">
       <Preview {renderer} {soundtrack} leadInMs={timeline.leadInMs} durationMs={timeline.durationMs} />
+      <div class="row">
+        <button onclick={remix} disabled={!play || !skin || mixing}>↻ 오디오 다시 합성</button>
+        {#if mixing}<span class="hint">오디오 준비 중…</span>
+        {:else if soundtrackStale}<span class="hint warn">설정이 바뀌었습니다. 미리보기 소리를 맞추려면 "오디오 다시 합성"을 누르세요.</span>{/if}
+      </div>
 
 
       <div class="export">
@@ -564,8 +611,15 @@
           <button class="primary" onclick={startExport} disabled={!renderer || exporting || !exportSupported}>
             영상 만들기 ({RESOLUTIONS[resolutionIndex].label.split(' ')[0]}, {fps}fps)
           </button>
+          {#if exporting}<button
+              onclick={() => {
+                abort?.abort();
+                exportStatus = '취소하는 중…';
+              }}>취소</button
+            >{/if}
           {#if downloadUrl}<a class="button" href={downloadUrl} download={downloadName}>⬇ 다운로드</a>{/if}
         </div>
+        {#if exporting}<progress value={progress} max="1"></progress>{/if}
         {#if exportStatus}<p class="hint">{exportStatus}</p>{/if}
         {#if downloadUrl}
           <!-- svelte-ignore a11y_media_has_caption -->
@@ -687,6 +741,12 @@
     flex-direction: column;
     gap: 0.5rem;
     margin-top: 0.5rem;
+  }
+  progress {
+    width: 100%;
+  }
+  .warn {
+    color: #ffcf6b;
   }
   video {
     width: 100%;

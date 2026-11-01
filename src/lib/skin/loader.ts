@@ -345,12 +345,17 @@ async function detectCharacter(
     y: first('Game_Chara_Y') ?? 0,
     balloonX: first('Game_Chara_Balloon_X'),
     balloonY: first('Game_Chara_Balloon_Y'),
+    balloonTimer: first('Game_Chara_Balloon_Timer'),
+    balloonFadeOut: first('Game_Chara_Balloon_FadeOut'),
     resolution: res && res.length >= 2 ? [res[0], res[1]] : resolution,
     states,
   };
 }
 
-/** Default beats per state, from OpenTaiko (balloon states are in seconds). */
+/**
+ * Default beats per state, from OpenTaiko. Balloon states are in seconds and
+ * independent of BPM (OpenTaiko uses 0.2s; TJAPlayer3 skins give ms per frame).
+ */
 const CHARA_DEFAULT_BEAT: Record<CharaState, number> = {
   Normal: 1,
   Clear: 2,
@@ -363,9 +368,9 @@ const CHARA_DEFAULT_BEAT: Record<CharaState, number> = {
   GoGoStart_Max: 1.5,
   Clearin: 1.5,
   Soulin: 1.5,
-  Balloon_Breaking: 0.6,
-  Balloon_Broke: 1,
-  Balloon_Miss: 1,
+  Balloon_Breaking: 0.2,
+  Balloon_Broke: 0.2,
+  Balloon_Miss: 0.2,
 };
 
 async function loadCharacter(
@@ -380,7 +385,11 @@ async function loadCharacter(
       if (!frames.length) return;
       const cfg = m.states?.[s] ?? {};
       const motion = (cfg.motion ?? frames.map((_, i) => i)).filter((i) => i >= 0 && i < frames.length);
-      states[s] = { frames, motion: motion.length ? motion : [0], beat: cfg.beat ?? CHARA_DEFAULT_BEAT[s] };
+      const mo = motion.length ? motion : [0];
+      // TJAPlayer3: balloon animations run at a fixed ms per frame.
+      const beat =
+        s.startsWith('Balloon_') && m.balloonTimer ? (mo.length * m.balloonTimer) / 1000 : (cfg.beat ?? CHARA_DEFAULT_BEAT[s]);
+      states[s] = { frames, motion: mo, beat };
     }),
   );
   if (!states.Normal) return undefined;
@@ -390,6 +399,7 @@ async function loadCharacter(
     balloonX: m.balloonX ?? m.x,
     balloonY: m.balloonY ?? m.y,
     scale: m.resolution ? skinRes[0] / m.resolution[0] : 1,
+    balloonFadeOutMs: m.balloonFadeOut ?? 0,
     states,
   };
 }
@@ -446,8 +456,14 @@ export async function loadSkin(
       tick();
     }),
     ...soundEntries.map(async ([key, path]) => {
-      const blob = await resolve(path);
-      if (blob) sounds[key] = await blob.arrayBuffer();
+      // "a|b": first file that exists.
+      for (const p of path.split('|')) {
+        const blob = await resolve(p);
+        if (blob) {
+          sounds[key] = await blob.arrayBuffer();
+          break;
+        }
+      }
       tick();
     }),
     (async () => {
@@ -468,7 +484,7 @@ export async function loadSkin(
     })(),
   ]);
 
-  const [dancer, character, hitEffect, gaugeRainbow] = await Promise.all([
+  const [dancer, character, hitEffect, gaugeRainbow, endAnim] = await Promise.all([
     manifest.dancer ? loadDancer(resolve, manifest.dancer).catch(() => undefined) : undefined,
     manifest.character
       ? loadCharacter(resolve, manifest.character, manifest.resolution).catch(() => undefined)
@@ -479,6 +495,7 @@ export async function loadSkin(
           .then((frames) => (frames.length ? { frames, frameMs: manifest.gaugeRainbow!.frameMs ?? 50 } : undefined))
           .catch(() => undefined)
       : undefined,
+    manifest.endAnim ? loadEndAnim(resolve, manifest).catch(() => undefined) : undefined,
   ]);
 
   // TJAPlayer3 skins split Judge.png into 60px rows (at 720p) instead of 5 equal rows.
@@ -487,7 +504,7 @@ export async function loadSkin(
     manifest.layout.judgeRows = Math.max(1, Math.round(images.judge.height / rowH));
   }
 
-  return { manifest, images, sounds, fontFamily, dancer, character, hitEffect, gaugeRainbow, layerImages };
+  return { manifest, images, sounds, fontFamily, dancer, character, hitEffect, gaugeRainbow, endAnim, layerImages };
 }
 
 /** Loads frames `<dir>/<i>.png`, probing in parallel chunks when the count is unknown. */
@@ -519,6 +536,50 @@ async function loadDancer(resolve: SkinFileResolver, m: DancerManifest): Promise
   );
   if (!frames.some((f) => f.length)) return undefined;
   return { config: { ...config, count }, frames };
+}
+
+/**
+ * TJAPlayer3 result animations. FullCombo / DondaFullCombo frames run at 33ms
+ * and are drawn at (lane X, scroll field Y − 142) in 720p units.
+ */
+async function loadEndAnim(resolve: SkinFileResolver, manifest: SkinManifest): Promise<LoadedSkin['endAnim']> {
+  const dir = manifest.endAnim!.dir;
+  const L = manifest.layout;
+  const u = manifest.resolution[1] / 720;
+  const seq = (frames: ImageSource[]) =>
+    frames.length ? { frames, frameMs: 33, x: L.lane[0], y: L.scrollField[1] - 142 * u } : undefined;
+  const range = (n: number) => Array.from({ length: n }, (_, i) => i);
+  const [fc, dfc, l, r, text, effect] = await Promise.all([
+    loadFrames(resolve, `${dir}/FullCombo`),
+    loadFrames(resolve, `${dir}/DondaFullCombo`),
+    Promise.all(range(5).map((i) => decodeImage(resolve, `${dir}/Clear/Clear_L_${i}.png`))),
+    Promise.all(range(5).map((i) => decodeImage(resolve, `${dir}/Clear/Clear_R_${i}.png`))),
+    decodeImage(resolve, `${dir}/Clear/Clear_Text.png`),
+    decodeImage(resolve, `${dir}/Clear/Clear_Text_Effect.png`),
+  ]);
+  // Sequences may end with blank frames (TJAPlayer3 then shows separate loop images,
+  // which skins often lack); drop them so the last visible frame stays on screen.
+  const out: NonNullable<LoadedSkin['endAnim']> = { fullCombo: seq(trimBlank(fc)), dondaFullCombo: seq(trimBlank(dfc)) };
+  if (text && l.every(Boolean) && r.every(Boolean)) {
+    out.clearParts = { l: l as ImageSource[], r: r as ImageSource[], text, effect: effect ?? undefined };
+  }
+  return out.fullCombo || out.dondaFullCombo || out.clearParts ? out : undefined;
+}
+
+function isBlank(im: ImageSource): boolean {
+  const c = new OffscreenCanvas(Math.max(1, im.width >> 2), Math.max(1, im.height >> 2));
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return false;
+  ctx.drawImage(im, 0, 0, c.width, c.height);
+  const d = ctx.getImageData(0, 0, c.width, c.height).data;
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 8) return false;
+  return true;
+}
+
+function trimBlank(frames: ImageSource[]): ImageSource[] {
+  let n = frames.length;
+  while (n > 0 && isBlank(frames[n - 1])) n--;
+  return frames.slice(0, n);
 }
 
 async function loadHitEffect(

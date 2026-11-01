@@ -1,5 +1,6 @@
 import type { Playthrough } from '../sim/autoplay';
-import type { LoadedSkin } from '../skin/types';
+import type { LoadedSkin, SoundKey } from '../skin/types';
+import { endAnimationTime, type EndResult } from '../endResult';
 
 export interface MixOptions {
   sampleRate: number;
@@ -9,6 +10,8 @@ export interface MixOptions {
   leadInMs: number;
   /** Total length of the output in ms. */
   durationMs: number;
+  /** Result jingle to play when the result animation starts. */
+  endResult?: EndResult;
 }
 
 /** Decodes an encoded audio file using a throwaway context. */
@@ -59,6 +62,22 @@ export async function mixSoundtrack(
       src.connect(hitGain);
       src.start(when);
     }
+  }
+
+  const endKey: Record<EndResult, SoundKey | null> = {
+    none: null,
+    clear: 'endClear',
+    fullCombo: 'endFullCombo',
+    dondaFullCombo: 'endDondaFullCombo',
+  };
+  const key = endKey[opts.endResult ?? 'dondaFullCombo'];
+  const jingle = key ? await decode(skin.sounds[key] ?? (key === 'endDondaFullCombo' ? skin.sounds.endFullCombo : undefined)) : null;
+  const when = (endAnimationTime(play) + opts.leadInMs) / 1000;
+  if (jingle && when >= 0 && when * 1000 < opts.durationMs) {
+    const src = ctx.createBufferSource();
+    src.buffer = jingle;
+    src.connect(ctx.destination);
+    src.start(when);
   }
 
   return ctx.startRendering();
