@@ -295,13 +295,29 @@
     mode === 'dan' ? builderCourse : parsed && courseSrc ? buildCourse(parsed.meta, courseSrc, branch) : null,
   );
   // Dan-i dojo: all songs' audio laid out on one timeline.
-  const danMusic = $derived(course?.dan ? composeDanMusic(course.dan.songs, audioBank, SAMPLE_RATE) : null);
-  const music = $derived(course?.dan ? (danMusic?.buffer ?? null) : singleMusic);
-  const songEndMs = $derived(music ? music.duration * 1000 : null);
+  // Dan: the songs' audio is joined only when mixing ("오디오 합성" / export);
+  // here we only need which files are missing and where the audio ends.
+  const danMusic = $derived.by(() => {
+    if (!course?.dan) return null;
+    const songs = course.dan.songs;
+    const missing: string[] = [];
+    let end = 0;
+    songs.forEach((s, i) => {
+      const b = audioBank[s.wave.toLowerCase()];
+      if (!b) return void missing.push(s.wave);
+      const next = songs[i + 1]?.chipTime;
+      end = Math.max(end, Math.min(s.audioStart + b.duration * 1000, next !== undefined ? next + 1000 : Infinity));
+    });
+    return { missing, endMs: missing.length === songs.length ? null : end };
+  });
+  /** The song audio for mixing (dan: composed now). */
+  const musicForMix = (): AudioBuffer | null =>
+    course?.dan ? composeDanMusic(course.dan.songs, audioBank, SAMPLE_RATE).buffer : singleMusic;
+  const songEndMs = $derived(course?.dan ? (danMusic?.endMs ?? null) : singleMusic ? singleMusic.duration * 1000 : null);
   const play = $derived(course ? simulate(course, { rollSpeed }) : null);
   const timeline = $derived(
     play
-      ? computeTimeline(play, music ? music.duration * 1000 : null, {
+      ? computeTimeline(play, songEndMs, {
           preRollMs: preRollSec * 1000,
           tailMs: 3000,
           endMode,
@@ -372,7 +388,7 @@
     JSON.stringify([
       idOf(play),
       idOf(skin),
-      idOf(music),
+      idOf(course?.dan ? audioBank : singleMusic),
       timeline.leadInMs,
       timeline.durationMs,
       musicVolume,
@@ -394,7 +410,9 @@
     mixing = true;
     const task = beginTask({ title: '오디오 준비 중…', detail: '음원과 타격음을 합치고 있습니다.' });
     try {
-      const buf = await mixSoundtrack(music, s, p, {
+      // Let the progress modal paint before the (synchronous) dan audio join.
+      await new Promise((r) => setTimeout(r, 30));
+      const buf = await mixSoundtrack(musicForMix(), s, p, {
         sampleRate: SAMPLE_RATE,
         musicVolume,
         hitVolume,
@@ -416,14 +434,19 @@
   }
 
   // Auto-mix when the song (TJA), the audio file or the skin changes.
+  // Dan courses (several songs) are only mixed when the button is pressed.
+  const isDanCourse = $derived(!!course?.dan);
   $effect(() => {
     void parsed;
-    void music;
+    void singleMusic;
+    void audioBank;
     void skin;
+    const dan = isDanCourse;
     untrack(() => {
       soundtrack = null;
       mixedKey = '';
     });
+    if (dan) return;
     const timer = setTimeout(() => untrack(() => void remix()), 50);
     return () => clearTimeout(timer);
   });
@@ -559,7 +582,7 @@
     abort = new AbortController();
     const started = performance.now();
     try {
-      const track = await mixSoundtrack(music, skin, play, {
+      const track = await mixSoundtrack(musicForMix(), skin, play, {
         sampleRate: SAMPLE_RATE,
         musicVolume,
         hitVolume,
@@ -614,7 +637,7 @@
       ? danMusic?.missing.length
         ? `단위 음원이 필요합니다: ${danMusic.missing.join(', ')} (TJA와 함께 선택하거나 끌어다 놓으세요)`
         : ''
-      : parsed?.meta.wave && !music
+      : parsed?.meta.wave && !singleMusic
         ? `TJA가 지정한 음원: ${parsed.meta.wave}`
         : '',
   );
@@ -752,7 +775,7 @@
         <dt>TJA</dt>
         <dd>{tjaName || '—'}</dd>
         <dt>음원</dt>
-        <dd>{audioName || '—'} {#if music}<small>({music.duration.toFixed(1)}초)</small>{/if}</dd>
+        <dd>{audioName || '—'} {#if songEndMs}<small>({(songEndMs / 1000).toFixed(1)}초)</small>{/if}</dd>
       </dl>
       {#if waveHint}<p class="hint">{waveHint}</p>{/if}
       {#if audioError}<p class="error">{audioError}</p>{/if}
@@ -973,8 +996,9 @@
     <section class="panel main">
       <Preview {renderer} {soundtrack} leadInMs={timeline.leadInMs} durationMs={timeline.durationMs} />
       <div class="row">
-        <button onclick={remix} disabled={!play || !skin || mixing}>↻ 오디오 다시 합성</button>
+        <button onclick={remix} disabled={!play || !skin || mixing}>{soundtrack ? '↻ 오디오 다시 합성' : '♪ 오디오 합성'}</button>
         {#if mixing}<span class="hint">오디오 준비 중…</span>
+        {:else if isDanCourse && !soundtrack}<span class="hint warn">단위는 자동으로 합성하지 않습니다. 곡과 음원을 다 넣은 뒤 "오디오 합성"을 누르세요. (영상 만들기는 항상 새로 합성)</span>
         {:else if soundtrackStale}<span class="hint warn">설정이 바뀌었습니다. 미리보기 소리를 맞추려면 "오디오 다시 합성"을 누르세요.</span>{/if}
       </div>
 
