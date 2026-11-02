@@ -149,6 +149,7 @@ export const BUILTIN_LAYOUT: SkinLayout = {
   // placed so its marker points at the exam value on this skin's gauge.
   dan: {
     gaugeExam: [1262, 172],
+    gaugeExamText: [157, 32],
     numberSize: [72, 87],
     smallNumberSize: [36, 44],
     miniNumberSize: [34, 42],

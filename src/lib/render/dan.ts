@@ -55,6 +55,7 @@ const DAN_LAYOUT_720: DanLayout = {
   titleSize: 40,
   subtitleSize: 29,
   titleMaxWidth: 710,
+  gaugeExamText: [99, 15],
   plate: [1120, 535],
   loadingPlate: [1121, 213],
 };
@@ -235,7 +236,8 @@ export class DanOverlay {
     const y0 = L.gaugeExam[1];
     const base = this.img('danGaugeBase');
     if (base) ctx.drawImage(base, x0, y0);
-    this.text(ctx, EXAM_NAMES.gauge, x0 + 104 * k, y0 + 21 * k, fontFamily);
+    // Centred in the tab's label pill (arcade), not OpenTaiko's (104, 21).
+    this.text(ctx, EXAM_NAMES.gauge, x0 + L.gaugeExamText[0], y0 + L.gaugeExamText[1], fontFamily, 1.1);
     const pad = Math.trunc(L.numberSmallPadding * L.examNumberScale);
     const str = String(v);
     this.number(ctx, 'danSmallNumber', L.smallNumberSize, v, x0 + 292 * k - str.length * pad, y0 - L.examOffset[1] + 64 * k, pad, s.status, 0);
@@ -355,9 +357,10 @@ export class DanOverlay {
     }
 
     // Current amount.
-    const nsx = small ? L.numberSmallScale * 0.6 : L.numberSmallScale;
-    const nsy = small ? L.numberSmallScale * 0.8 : L.numberSmallScale;
-    const npad = Math.trunc(L.numberPadding * (small ? 0.6 : 1));
+    // Same size in narrow bars too (OpenTaiko squeezes them to 0.6×0.8; the arcade does not).
+    const nsx = L.numberSmallScale;
+    const nsy = L.numberSmallScale;
+    const npad = L.numberPadding;
     const bounceIdx = Number.isFinite(s.amountChanged) ? Math.floor((t - s.amountChanged) / 12) : 99;
     const bounce = bounceIdx >= 0 && bounceIdx < SCORE_SCALE.length ? SCORE_SCALE[bounceIdx] : 0;
     ctx.globalAlpha = opacity;
@@ -490,8 +493,8 @@ export class DanOverlay {
     if (grey) ctx.filter = prevFilter;
   }
 
-  private text(ctx: Ctx2D, s: string, cx: number, cy: number, fontFamily: string): void {
-    const size = Math.round(14 * (4 / 3) * this.k);
+  private text(ctx: Ctx2D, s: string, cx: number, cy: number, fontFamily: string, scale = 1): void {
+    const size = Math.round(14 * (4 / 3) * this.k * scale);
     ctx.save();
     ctx.font = `bold ${size}px ${fontFamily}`;
     ctx.textAlign = 'center';

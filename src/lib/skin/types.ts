@@ -528,6 +528,8 @@ export type SkinFileResolver = ((path: string) => Promise<Blob | null>) & { list
 export interface DanLayout {
   /** Game_DanC_X/Y[0]: soul gauge exam tab (its x is shifted by the exam value). */
   gaugeExam: XY;
+  /** Centre of the "魂ゲージ" label, from the soul gauge exam tab's top-left. */
+  gaugeExamText: XY;
   /** Game_DanC_X/Y[1]: exam panel origin. */
   panel: XY;
   /** Game_DanC_Size: one exam bar (half of Base.png). */
