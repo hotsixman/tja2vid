@@ -259,7 +259,8 @@ export class DanOverlay {
     const small = pos >= 3 || (countNoGauge > 3 && countNoGauge % 3 > pos) || countNoGauge === 6;
     const yIndex = (pos % 3) + 1;
     const barX = L.panel[0] + (pos >= 3 ? L.baseOffsetX[1] : L.baseOffsetX[0]);
-    const barY = L.panel[1] + (pos >= 3 ? L.baseOffsetY[1] : L.baseOffsetY[0]) + L.size[1] * yIndex + yIndex * L.padding;
+    const pitch = L.rowPitch ?? L.size[1] + L.padding;
+    const barY = L.panel[1] + (pos >= 3 ? L.baseOffsetY[1] : L.baseOffsetY[0]) + pitch * yIndex;
     const lowerY = barY + L.size[1] + L.padding;
 
     // Base (individual exams use the lower half).
@@ -379,7 +380,7 @@ export class DanOverlay {
     );
 
     // Condition: "N 以上/未満" and the exam type label.
-    let off = L.examOffset[0];
+    let off = L.examOffset[0] + (L.conditionShift ?? 0);
     const range = this.img('danExamRange');
     if (range) {
       const [rw, rh] = L.examRangeSize;
@@ -743,15 +744,17 @@ export function composeDanPlate(
   const chars = [...name.replace(/\s+/g, '')];
   if (chars.length) {
     const avail = PH - (en ? 150 : 110) * k;
-    const size = Math.min(80 * k, avail / chars.length);
+    // Arcade plates space the characters out a little (step 1.2× the glyph size).
+    const step = 1.2;
+    const size = Math.min(80 * k, avail / (chars.length * step));
     x.font = `900 ${size}px ${fontFamily}`;
     x.textAlign = 'center';
     x.textBaseline = 'middle';
     x.lineJoin = 'round';
-    const cy0 = PH / 2 - (en ? 40 : 10) * k - (size * chars.length) / 2;
+    const cy0 = PH / 2 - (en ? 45 : 10) * k - (size * step * chars.length) / 2;
     chars.forEach((ch, i) => {
-      const cy = cy0 + size * (i + 0.5);
-      x.lineWidth = size * 0.24;
+      const cy = cy0 + size * step * (i + 0.5);
+      x.lineWidth = size * 0.2;
       x.strokeStyle = '#000';
       x.strokeText(ch, PW / 2, cy);
       x.fillStyle = '#fff';
@@ -766,7 +769,7 @@ export function composeDanPlate(
     x.textBaseline = 'middle';
     x.fillStyle = '#111';
     words.forEach((w, i) => {
-      const yy = PH - (62 + (words.length - 1 - i) * 26) * k;
+      const yy = PH - (84 + (words.length - 1 - i) * 26) * k;
       const mw = PW - 50 * k;
       const tw = x.measureText(w).width;
       x.save();

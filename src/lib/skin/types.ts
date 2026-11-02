@@ -535,6 +535,10 @@ export interface DanLayout {
   /** Game_DanC_Size: one exam bar (half of Base.png). */
   size: XY;
   padding: number;
+  /** Distance between exam rows (OpenTaiko: size + padding). */
+  rowPitch?: number;
+  /** Extra x shift of the "N 以上/未満" condition text. */
+  conditionShift?: number;
   baseOffsetX: XY;
   baseOffsetY: XY;
   smallBaseOffsetX: XY;

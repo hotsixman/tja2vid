@@ -542,6 +542,9 @@ export function applyOpenTaikoIni(
     ['examNumberScale', 'Game_DanC_Exam_Number_Scale'],
     ['examRangePadding', 'Game_DanC_ExamRange_Padding'],
     ['titleMaxWidth', 'Game_DanC_Title_MaxWidth'],
+    // tja2vid extensions
+    ['rowPitch', 'Game_DanC_Row_Pitch'],
+    ['conditionShift', 'Game_DanC_Condition_Shift'],
   ];
   for (const [field, key] of numKeys) {
     const v = nums(game[key])[0];
