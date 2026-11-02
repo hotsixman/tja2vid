@@ -4,7 +4,9 @@
   import BusyModal, { type BusyState } from './lib/components/BusyModal.svelte';
   import { decodeTja, ENCODINGS, type TjaEncoding } from './lib/tja/decode';
   import { buildCourse, parseTja } from './lib/tja/parser';
-  import type { Branch, ParsedTja } from './lib/tja/types';
+  import type { Branch, DanExam, DanInfo, ParsedTja } from './lib/tja/types';
+  import { buildDanCourse, type DanBuildExam } from './lib/tja/danBuilder';
+  import { DAN_RANKS, EXAM_NAMES, danPlateStyle } from './lib/render/dan';
   import { simulate } from './lib/sim/autoplay';
   import { TaikoRenderer } from './lib/render/renderer';
   import { folderResolver, loadSkin, missingImages, zipResolver } from './lib/skin/loader';
@@ -36,7 +38,8 @@
   let audioError = $state('');
   /** Dan-i dojo plate: Dan_Plate.png dropped with the TJA, or chosen in the options. */
   let danPlateImage = $state<ImageBitmap | undefined>(undefined);
-  let danPlateMode = $state<'auto' | 'image' | 'none' | number>('auto');
+  /** 'auto', 'rank:十段' presets, 0–5 plate kinds, 'image' or 'none'. */
+  let danPlateMode = $state<string | number>('auto');
   let danPlateTint = $state(false);
   let danPlateTintColor = $state('#ffffff');
   const danPlateColor = $derived(danPlateTint ? danPlateTintColor : '');
@@ -200,7 +203,7 @@
   }
 
   // ---------------------------------------------------------------- derived chart
-  const parsed: ParsedTja | null = $derived.by(() => {
+  const parsedFile: ParsedTja | null = $derived.by(() => {
     if (!tjaBytes) return null;
     try {
       return parseTja(decodeTja(tjaBytes, encoding));
@@ -210,8 +213,87 @@
     }
   });
 
+  // ---------------------------------------------------------------- dan builder
+  // "단위 만들기": ordinary song charts + their audio + exams chosen here.
+  let mode = $state<'song' | 'dan'>('song');
+  interface BuilderSong {
+    id: number;
+    name: string;
+    bytes: Uint8Array;
+    courseIndex: number;
+    branch: Branch;
+  }
+  let builderSongs = $state<BuilderSong[]>([]);
+  let builderSeq = 0;
+  let danName = $state('十段');
+  type ExamRow = DanBuildExam;
+  let danExams = $state<ExamRow[]>([
+    { type: 'gauge', range: 'more', perSong: false, values: [[100, 100]] },
+    { type: 'judgeGood', range: 'less', perSong: false, values: [[75, 50]] },
+    { type: 'judgeBad', range: 'less', perSong: false, values: [[8, 4]] },
+    { type: 'roll', range: 'more', perSong: true, values: [[50, 70]] },
+  ]);
+  const EXAM_TYPE_OPTIONS: DanExam['type'][] = ['gauge', 'judgePerfect', 'judgeGood', 'judgeBad', 'score', 'roll', 'hit', 'combo', 'accuracy'];
+  const builderParsed = $derived(
+    builderSongs.map((s) => {
+      try {
+        return parseTja(decodeTja(s.bytes, encoding));
+      } catch {
+        return null;
+      }
+    }),
+  );
+  // Per-song exams need one value pair per song.
+  $effect(() => {
+    const n = Math.max(1, builderSongs.length);
+    untrack(() => {
+      for (const e of danExams) {
+        if (!e.perSong) continue;
+        while (e.values.length < n) e.values.push([...(e.values[e.values.length - 1] ?? [0, 0])] as [number, number]);
+      }
+    });
+  });
+  function addExam() {
+    if (danExams.length >= 7) return;
+    danExams.push({ type: 'judgePerfect', range: 'more', perSong: false, values: [[100, 200]] });
+  }
+  function moveSong(i: number, d: number) {
+    const j = i + d;
+    if (j < 0 || j >= builderSongs.length) return;
+    const a = builderSongs.slice();
+    [a[i], a[j]] = [a[j], a[i]];
+    builderSongs = a;
+  }
+
+  const builderCourse = $derived.by(() => {
+    if (mode !== 'dan') return null;
+    const songs = builderSongs
+      .map((s, i) => {
+        const p = builderParsed[i];
+        const src = p?.courses[Math.min(s.courseIndex, p.courses.length - 1)];
+        return p && src ? { meta: p.meta, source: src, branch: s.branch } : null;
+      })
+      .filter((x) => x !== null);
+    if (!songs.length) return null;
+    try {
+      return buildDanCourse(songs, $state.snapshot(danExams) as DanBuildExam[]);
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  });
+  const parsed: ParsedTja | null = $derived(
+    mode === 'dan'
+      ? builderCourse
+        ? { meta: { title: danName, subtitle: '', wave: '', offset: 0, bpm: 120, demoStart: 0, genre: '' }, courses: [] }
+        : null
+      : parsedFile,
+  );
+
   const courseSrc = $derived(parsed?.courses[Math.min(courseIndex, (parsed?.courses.length ?? 1) - 1)] ?? null);
-  const course = $derived(parsed && courseSrc ? buildCourse(parsed.meta, courseSrc, branch) : null);
+  const course = $derived(
+    mode === 'dan' ? builderCourse : parsed && courseSrc ? buildCourse(parsed.meta, courseSrc, branch) : null,
+  );
   // Dan-i dojo: all songs' audio laid out on one timeline.
   const danMusic = $derived(course?.dan ? composeDanMusic(course.dan.songs, audioBank, SAMPLE_RATE) : null);
   const music = $derived(course?.dan ? (danMusic?.buffer ?? null) : singleMusic);
@@ -243,9 +325,14 @@
       ? { text: genreOverride || (course?.dan ? '段位道場' : parsed?.meta.genre) || '', background: genreBg, color: genreColor }
       : undefined,
     danPlate: {
-      mode: danPlateMode === 'image' && !danPlateImage ? 'auto' : danPlateMode,
+      mode:
+        typeof danPlateMode === 'string' && danPlateMode.startsWith('rank:')
+          ? danPlateStyle(danPlateMode.slice(5)).tick
+          : danPlateMode === 'image' && !danPlateImage
+            ? 'auto'
+            : (danPlateMode as 'auto' | 'image' | 'none' | number),
       color: danPlateColor,
-      text: danPlateText || undefined,
+      text: danPlateText || (typeof danPlateMode === 'string' && danPlateMode.startsWith('rank:') ? danPlateMode.slice(5) : undefined),
       english: danPlateEnglish,
       image: danPlateImage,
     },
@@ -418,6 +505,24 @@
       if (danPlateMode === 'image') danPlateMode = 'auto';
     }
     if (plate) await loadPlateImage(plate);
+    if (mode === 'dan') {
+      // Each TJA becomes a song of the dan; audio goes to the bank (matched by WAVE:).
+      for (const f of files.filter(isTja)) {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        let courseIdx = 0;
+        try {
+          const p = parseTja(decodeTja(bytes, encoding));
+          const oni = p.courses.findIndex((c) => c.course === 'Oni' && !c.label.includes('P2'));
+          courseIdx = oni >= 0 ? oni : 0;
+        } catch {
+          /* shown as unreadable in the list */
+        }
+        builderSongs.push({ id: ++builderSeq, name: f.name, bytes, courseIndex: courseIdx, branch: 'master' });
+      }
+      if (pendingAudio.length) await loadAudioBank(pendingAudio);
+      pendingAudio = [];
+      return;
+    }
     if (tja) await loadTja(tja);
     else if (pendingAudio.length) {
       if (course?.dan) await loadAudioBank(pendingAudio);
@@ -515,6 +620,56 @@
   );
 </script>
 
+{#snippet danOptions(dan: DanInfo)}
+            <h3>단위 도장</h3>
+            <p class="hint">
+              {dan.songs.map((s, i) => `${i + 1}곡: ${s.title}`).join(' · ')}
+            </p>
+            <label>
+              단위 패
+              <select bind:value={danPlateMode}>
+                <option value="auto">
+                  자동 (TJA{dan.tick !== undefined ? ` DANTICK ${dan.tick}: ${PLATE_KINDS[dan.tick]}` : ' 제목으로 추정'})
+                </option>
+                <optgroup label="단위 (패 색 + 이름)">
+                  {#each DAN_RANKS as r (r)}<option value={`rank:${r}`}>{r}</option>{/each}
+                </optgroup>
+                <optgroup label="패 색만 고르기 (글자는 아래)">
+                  {#each PLATE_KINDS as k, i (k)}<option value={i}>{k}</option>{/each}
+                </optgroup>
+                {#if danPlateImage}<option value="image">이미지 (Dan_Plate.png)</option>{/if}
+                <option value="none">표시 안 함</option>
+              </select>
+            </label>
+            {#if danPlateMode !== 'none' && danPlateMode !== 'image'}
+              <label>
+                패 글자
+                <input
+                  type="text"
+                  placeholder={typeof danPlateMode === 'string' && danPlateMode.startsWith('rank:') ? danPlateMode.slice(5) : (parsed?.meta.title ?? '')}
+                  bind:value={danPlateText}
+                />
+              </label>
+              <label class="check">
+                <input type="checkbox" bind:checked={danPlateTint} />
+                패 색 직접 지정 {#if !danPlateTint && dan.tickColor}(TJA DANTICKCOLOR {dan.tickColor}){/if}
+              </label>
+              {#if danPlateTint}<label>패 색 <input type="color" bind:value={danPlateTintColor} /></label>{/if}
+              <label class="check"><input type="checkbox" bind:checked={danPlateEnglish} /> 영문 이름 표시 (예: TENTH DAN)</label>
+            {/if}
+            <label>
+              패 이미지 (Dan_Plate.png)
+              <input
+                type="file"
+                accept="image/*"
+                onchange={(e) => {
+                  const f = (e.target as HTMLInputElement).files?.[0];
+                  if (f) void loadPlateImage(f);
+                }}
+              />
+            </label>
+{/snippet}
+
 <svelte:window
   ondragover={(e) => {
     e.preventDefault();
@@ -537,6 +692,10 @@
   <div class="layout">
     <section class="panel">
       <h2>1. 파일</h2>
+      <div class="modes">
+        <label class="check"><input type="radio" bind:group={mode} value="song" /> 곡 / 단위 TJA</label>
+        <label class="check"><input type="radio" bind:group={mode} value="dan" /> 단위 만들기 (곡별 TJA + 음원 + 조건)</label>
+      </div>
       <label class="drop">
         <input
           type="file"
@@ -544,8 +703,51 @@
           accept=".tja,audio/*,.ogg,.mp3,.wav,.m4a,.flac,.opus,.png"
           onchange={(e) => handleFiles((e.target as HTMLInputElement).files)}
         />
-        <span>TJA + 음원 파일을 선택하거나 이 창에 끌어다 놓으세요 (단위 도장은 모든 곡의 음원과 Dan_Plate.png도 함께)</span>
+        <span>
+          {#if mode === 'dan'}
+            곡별 TJA와 음원(ogg 등)을 선택하거나 끌어다 놓으세요. 넣은 순서대로 1곡, 2곡…이 됩니다 (여러 번 추가 가능)
+          {:else}
+            TJA + 음원 파일을 선택하거나 이 창에 끌어다 놓으세요 (단위 도장은 모든 곡의 음원과 Dan_Plate.png도 함께)
+          {/if}
+        </span>
       </label>
+      {#if mode === 'dan'}
+        <ol class="dansongs">
+          {#each builderSongs as s, i (s.id)}
+            {@const p = builderParsed[i]}
+            <li>
+              <div class="row">
+                <b>{p?.meta.title || s.name}</b>
+                {#if p?.meta.wave}
+                  {#if audioBank[p.meta.wave.toLowerCase()]}<small class="ok">♪ {p.meta.wave}</small>
+                  {:else}<small class="warn">♪ {p.meta.wave} 없음</small>{/if}
+                {/if}
+                <span class="spacer"></span>
+                <button type="button" onclick={() => moveSong(i, -1)} disabled={i === 0} title="위로">▲</button>
+                <button type="button" onclick={() => moveSong(i, 1)} disabled={i === builderSongs.length - 1} title="아래로">▼</button>
+                <button type="button" onclick={() => (builderSongs = builderSongs.filter((x) => x.id !== s.id))} title="빼기">✕</button>
+              </div>
+              {#if p && p.courses.length}
+                <div class="row">
+                  <select bind:value={s.courseIndex}>
+                    {#each p.courses as c, ci (ci)}<option value={ci}>{c.label} ★{c.level}</option>{/each}
+                  </select>
+                  {#if p.courses[Math.min(s.courseIndex, p.courses.length - 1)]?.hasBranches}
+                    <select bind:value={s.branch}>
+                      <option value="normal">보통</option>
+                      <option value="expert">현인</option>
+                      <option value="master">달인</option>
+                    </select>
+                  {/if}
+                </div>
+              {:else}
+                <p class="error">채보를 읽지 못했습니다.</p>
+              {/if}
+            </li>
+          {/each}
+        </ol>
+        {#if !builderSongs.length}<p class="hint">아직 곡이 없습니다.</p>{/if}
+      {/if}
       <dl class="files">
         <dt>TJA</dt>
         <dd>{tjaName || '—'}</dd>
@@ -561,7 +763,48 @@
         </select>
       </label>
 
-      {#if parsed}
+      {#if mode === 'dan'}
+        <h2>2. 단위 조건</h2>
+        <label>단위 이름 <input type="text" bind:value={danName} /></label>
+        <div class="exams">
+          {#each danExams as e, ei (ei)}
+            <div class="exam">
+              <div class="row">
+                <b>{ei + 1}</b>
+                <select bind:value={e.type}>
+                  {#each EXAM_TYPE_OPTIONS as t (t)}<option value={t}>{EXAM_NAMES[t]}</option>{/each}
+                </select>
+                <select bind:value={e.range}>
+                  <option value="more">以上</option>
+                  <option value="less">未満</option>
+                </select>
+                {#if e.type !== 'gauge' && builderSongs.length > 1}
+                  <label class="check"><input type="checkbox" bind:checked={e.perSong} /> 곡별</label>
+                {/if}
+                <span class="spacer"></span>
+                <button type="button" onclick={() => danExams.splice(ei, 1)} title="빼기">✕</button>
+              </div>
+              {#each e.perSong && e.type !== 'gauge' && builderSongs.length > 1 ? builderSongs.map((_, k) => k) : [0] as k (k)}
+                {#if e.values[k]}
+                  <div class="row vals">
+                    {#if e.perSong && e.type !== 'gauge' && builderSongs.length > 1}<small>{k + 1}곡</small>{/if}
+                    <label>합격(빨강) <input type="number" min="0" bind:value={e.values[k][0]} /></label>
+                    <label>금합격 <input type="number" min="0" bind:value={e.values[k][1]} /></label>
+                  </div>
+                {/if}
+              {/each}
+            </div>
+          {/each}
+          {#if danExams.length < 7}<button type="button" onclick={addExam}>+ 조건 추가</button>{/if}
+        </div>
+        {#if course}
+          <p class="hint">{stats}</p>
+        {/if}
+      {/if}
+      {#if parsed && mode === 'dan' && course?.dan}
+        {@render danOptions(course.dan)}
+      {/if}
+      {#if parsed && mode === 'song'}
         <h2>2. 채보</h2>
         {#if parsed.courses.length === 0}
           <p class="error">#START ~ #END 구간을 찾지 못했습니다.</p>
@@ -587,43 +830,7 @@
           <label>제목 <input type="text" placeholder={parsed.meta.title} bind:value={titleOverride} /></label>
           <label>부제 <input type="text" placeholder={parsed.meta.subtitle} bind:value={subtitleOverride} /></label>
           <p class="hint">{stats}</p>
-          {#if course?.dan}
-            <h3>단위 도장</h3>
-            <p class="hint">
-              {course.dan.songs.map((s, i) => `${i + 1}곡: ${s.title}`).join(' · ')}
-            </p>
-            <label>
-              단위 패
-              <select bind:value={danPlateMode}>
-                <option value="auto">
-                  자동 (TJA{course.dan.tick !== undefined ? ` DANTICK ${course.dan.tick}: ${PLATE_KINDS[course.dan.tick]}` : ' 제목으로 추정'})
-                </option>
-                {#each PLATE_KINDS as k, i (k)}<option value={i}>{k}</option>{/each}
-                {#if danPlateImage}<option value="image">이미지 (Dan_Plate.png)</option>{/if}
-                <option value="none">표시 안 함</option>
-              </select>
-            </label>
-            {#if danPlateMode !== 'none' && danPlateMode !== 'image'}
-              <label>패 글자 <input type="text" placeholder={parsed.meta.title} bind:value={danPlateText} /></label>
-              <label class="check">
-                <input type="checkbox" bind:checked={danPlateTint} />
-                패 색 직접 지정 {#if !danPlateTint && course.dan.tickColor}(TJA DANTICKCOLOR {course.dan.tickColor}){/if}
-              </label>
-              {#if danPlateTint}<label>패 색 <input type="color" bind:value={danPlateTintColor} /></label>{/if}
-              <label class="check"><input type="checkbox" bind:checked={danPlateEnglish} /> 영문 이름 표시 (예: TENTH DAN)</label>
-            {/if}
-            <label>
-              패 이미지 (Dan_Plate.png)
-              <input
-                type="file"
-                accept="image/*"
-                onchange={(e) => {
-                  const f = (e.target as HTMLInputElement).files?.[0];
-                  if (f) void loadPlateImage(f);
-                }}
-              />
-            </label>
-          {/if}
+          {#if course?.dan}{@render danOptions(course.dan)}{/if}
         {/if}
       {/if}
 
@@ -867,6 +1074,57 @@
     gap: 0.5rem;
     flex-wrap: wrap;
     align-items: center;
+  }
+  .modes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-bottom: 0.5rem;
+  }
+  .dansongs {
+    margin: 0.5rem 0;
+    padding-left: 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .dansongs li > .row + .row {
+    margin-top: 0.25rem;
+  }
+  .spacer {
+    flex: 1;
+  }
+  small.ok {
+    color: #6fd08c;
+  }
+  small.warn {
+    color: #ffb454;
+  }
+  .exams {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+  }
+  .exam {
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 0.4rem 0.5rem;
+  }
+  .exam .vals input {
+    width: 6rem;
+  }
+  .exam .row select,
+  .dansongs .row select {
+    flex: 1;
+    min-width: 0;
+  }
+  .dansongs .row b {
+    flex: 1 1 100%;
+  }
+  .dansongs button,
+  .exam button {
+    padding: 0.1rem 0.45rem;
   }
   .drop {
     border: 2px dashed #555;

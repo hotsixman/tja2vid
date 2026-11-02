@@ -188,3 +188,36 @@ describe('dan-i dojo', () => {
     expect(dan.exams[2]?.values).toEqual([18, 24]);
   });
 });
+
+describe('dan builder', () => {
+  const song = (title: string, wave: string) =>
+    parseTja([`TITLE:${title}`, 'BPM:120', `WAVE:${wave}`, 'COURSE:Oni', 'LEVEL:9', '#START', '1111,', '2222,', '#END'].join('\n'));
+
+  it('lays songs out like #NEXTSONG and assigns exams', async () => {
+    const { buildDanCourse } = await import('../src/lib/tja/danBuilder');
+    const a = song('A', 'a.ogg');
+    const b = song('B', 'b.ogg');
+    const c = buildDanCourse(
+      [
+        { meta: a.meta, source: a.courses[0], branch: 'master' },
+        { meta: b.meta, source: b.courses[0], branch: 'master' },
+      ],
+      [
+        { type: 'gauge', range: 'more', perSong: false, values: [[90, 100]] },
+        { type: 'roll', range: 'more', perSong: true, values: [[10, 20], [30, 40]] },
+      ],
+    );
+    const dan = c.dan!;
+    expect(c.course).toBe('Dan');
+    expect(dan.songs.map((s) => [s.chipTime, s.audioStart, s.wave])).toEqual([
+      [0, 7200, 'a.ogg'],
+      // two 2s bars of song A, then the next curtain
+      [11200, 18400, 'b.ogg'],
+    ]);
+    expect(c.notes[0].time).toBe(7200);
+    expect(c.notes[8].time).toBe(18400);
+    expect(dan.songs[0].exams[0]?.values).toEqual([90, 100]);
+    expect(dan.songs[1].exams[0]).toBeNull();
+    expect(dan.songs[1].exams[1]?.values).toEqual([30, 40]);
+  });
+});

@@ -105,28 +105,45 @@ export async function mixSoundtrack(
  * Files are looked up by name (case-insensitive); missing ones stay silent.
  */
 export function composeDanMusic(
-  songs: { wave: string; audioStart: number }[],
+  songs: { wave: string; audioStart: number; chipTime?: number }[],
   bank: Record<string, AudioBuffer>,
   sampleRate: number,
 ): { buffer: AudioBuffer | null; missing: string[] } {
   const found = songs.map((s) => bank[s.wave.toLowerCase()] ?? null);
   const missing = songs.filter((_, i) => !found[i]).map((s) => s.wave);
   if (found.every((b) => !b)) return { buffer: null, missing };
+  const ms = (t: number) => Math.round((t / 1000) * sampleRate);
+  // A song still playing when the next one's curtain starts fades out over 1s
+  // (matters for full-length audio used in a self-built dan).
+  const FADE = ms(1000);
+  const spans = songs.map((s, i) => {
+    const b = found[i];
+    if (!b) return null;
+    const at = ms(s.audioStart);
+    const next = songs[i + 1]?.chipTime;
+    const fadeAt = next !== undefined ? ms(next) : Infinity;
+    const end = Math.min(at + b.length, fadeAt + FADE);
+    return { b, at, end, fadeAt };
+  });
   let length = 1;
-  songs.forEach((s, i) => {
-    const b = found[i];
-    if (b) length = Math.max(length, Math.round((s.audioStart / 1000) * sampleRate) + Math.round(b.duration * sampleRate));
-  });
+  for (const sp of spans) if (sp) length = Math.max(length, sp.end);
   const out = new AudioBuffer({ numberOfChannels: 2, length, sampleRate });
-  songs.forEach((s, i) => {
-    const b = found[i];
-    if (!b) return;
-    const at = Math.round((s.audioStart / 1000) * sampleRate);
-    // Buffers are decoded at the output rate, so samples copy straight across.
+  for (const sp of spans) {
+    if (!sp) continue;
     for (let ch = 0; ch < 2; ch++) {
-      const src = b.getChannelData(Math.min(ch, b.numberOfChannels - 1));
-      out.getChannelData(ch).set(src.subarray(0, Math.max(0, Math.min(src.length, length - at))), at);
+      const src = sp.b.getChannelData(Math.min(ch, sp.b.numberOfChannels - 1));
+      const dst = out.getChannelData(ch);
+      const n = Math.min(sp.end, length) - sp.at;
+      if (sp.end - sp.at === src.length && sp.fadeAt >= sp.end) {
+        dst.set(src.subarray(0, n), sp.at);
+        continue;
+      }
+      for (let j = 0; j < n; j++) {
+        const t = sp.at + j;
+        const g = t < sp.fadeAt ? 1 : Math.max(0, 1 - (t - sp.fadeAt) / FADE);
+        dst[t] += src[j] * g;
+      }
     }
-  });
+  }
   return { buffer: out, missing };
 }

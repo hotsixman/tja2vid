@@ -601,7 +601,32 @@ const SPECIAL: Record<string, [string, number]> = {
   名人: ['MEIJIN', 3],
   超人: ['CHOJIN', 4],
   達人: ['TATSUJIN', 4],
+  外伝: ['GAIDEN', 5],
 };
+
+/** Arcade dan ranks, lowest first (for the plate presets). */
+export const DAN_RANKS = [
+  '五級',
+  '四級',
+  '三級',
+  '二級',
+  '一級',
+  '初段',
+  '二段',
+  '三段',
+  '四段',
+  '五段',
+  '六段',
+  '七段',
+  '八段',
+  '九段',
+  '十段',
+  '玄人',
+  '名人',
+  '超人',
+  '達人',
+  '外伝',
+] as const;
 
 /** DanPlates.png columns (OpenTaiko DANTICK 0–5). */
 export const DAN_PLATE_KINDS = ['wood', 'red', 'blue', 'silver', 'gold', 'white'] as const;
