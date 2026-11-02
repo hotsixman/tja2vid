@@ -518,7 +518,14 @@ export function buildCourse(meta: TjaMeta, src: CourseSource, branch: Branch = '
     danExams.forEach((e, i) => {
       if (e && !danSongs[0].exams[i]) danSongs[0].exams[i] = e;
     });
-    dan = { songs: danSongs, exams: danExams };
+    const tick = parseInt(src.headers.DANTICK ?? '', 10);
+    const tickColor = (src.headers.DANTICKCOLOR ?? '').trim();
+    dan = {
+      songs: danSongs,
+      exams: danExams,
+      tick: Number.isFinite(tick) ? Math.max(0, Math.min(5, tick)) : undefined,
+      tickColor: /^#[0-9a-f]{3,8}$/i.test(tickColor) ? tickColor : undefined,
+    };
   }
 
   return {

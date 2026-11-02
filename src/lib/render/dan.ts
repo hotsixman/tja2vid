@@ -56,6 +56,7 @@ const DAN_LAYOUT_720: DanLayout = {
   subtitleSize: 29,
   titleMaxWidth: 710,
   plate: [1120, 535],
+  loadingPlate: [1121, 213],
 };
 const UNSCALED: (keyof DanLayout)[] = ['numberSmallScale', 'examNumberScale'];
 
@@ -116,8 +117,7 @@ export class DanOverlay {
     private readonly gaugeX: number,
     /** Dan name for the plate (TJA TITLE, e.g. 十段). */
     private readonly danTitle = '',
-    /** Dan_Plate.png from the song folder, drawn instead of the generated plate. */
-    private readonly plateImage?: ImageSource,
+    private readonly plateOpts: DanPlateOptions = { mode: 'auto' },
   ) {
     this.L = danLayoutFor(skin);
     this.k = skin.manifest.resolution[1] / 720;
@@ -196,23 +196,29 @@ export class DanOverlay {
       pos++;
       this.drawBar(ctx, t, c, slot.individual, slot.tracks, track, pos, countNoGauge, fontFamily);
     }
-    this.drawPlate(ctx, fontFamily);
+    const [px, py] = this.L.plate;
+    this.drawPlate(ctx, px, py, fontFamily);
   }
 
-  /** Dan plate right of the exams (Dan_Plate.png, or a generated wooden plaque with the dan name). */
-  private drawPlate(ctx: Ctx2D, fontFamily: string): void {
-    const [cx, cy] = this.L.plate;
-    const im = this.plateImage ?? this.generatedPlate(fontFamily);
-    if (!im) return;
-    ctx.drawImage(im, cx - im.width / 2, cy - im.height / 2);
+  /** Dan plate centred at (x, y): a custom image, or a DanPlates.png column with the dan name. */
+  drawPlate(ctx: Ctx2D, x: number, y: number, fontFamily: string): void {
+    const im = this.plateImageFor(fontFamily);
+    if (im) ctx.drawImage(im, x - im.width / 2, y - im.height / 2);
   }
 
-  private generatedPlate(fontFamily: string): OffscreenCanvas | null {
+  private plateImageFor(fontFamily: string): ImageSource | OffscreenCanvas | null {
+    const o = this.plateOpts;
+    if (o.mode === 'none') return null;
+    if (o.mode === 'image') return o.image ?? null;
     if (this.plateCache !== undefined) return this.plateCache;
     this.plateCache = null;
-    const name = this.danTitle.trim();
-    if (!name || typeof OffscreenCanvas === 'undefined') return null;
-    this.plateCache = drawDanPlate(name, this.k, fontFamily);
+    if (typeof OffscreenCanvas === 'undefined') return null;
+    const name = (o.text ?? this.danTitle).trim();
+    const info = this.dan.info;
+    const tick = o.mode === 'auto' ? (info.tick ?? danPlateStyle(name).tick) : o.mode;
+    const tint = o.color || (o.mode === 'auto' ? (info.tickColor ?? '') : '');
+    const sheet = this.img('danPlates') ?? drawDanPlatesSheet(this.k);
+    this.plateCache = composeDanPlate(sheet, tick, tint, name, o.english !== false, this.k, fontFamily);
     return this.plateCache;
   }
 
@@ -585,111 +591,183 @@ export class DanOverlay {
 
 const KANJI_NUM = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 const EN_NUM = ['', 'FIRST', 'SECOND', 'THIRD', 'FOURTH', 'FIFTH', 'SIXTH', 'SEVENTH', 'EIGHTH', 'NINTH', 'TENTH'];
-const SPECIAL: Record<string, [string, string, string]> = {
-  // name: [English, plate colour, edge colour]
-  玄人: ['KUROTO', '#9aa3ad', '#4b525a'],
-  名人: ['MEIJIN', '#c9ced6', '#5d646e'],
-  超人: ['CHOJIN', '#f2c84b', '#8a6410'],
-  達人: ['TATSUJIN', '#f7d35a', '#8a6410'],
+const SPECIAL: Record<string, [string, number]> = {
+  // name: [English, DanPlates column]
+  玄人: ['KUROTO', 3],
+  名人: ['MEIJIN', 3],
+  超人: ['CHOJIN', 4],
+  達人: ['TATSUJIN', 4],
 };
 
-/** English name and plate colours for a dan title like 十段, 五級, 初段 or 達人. */
-export function danPlateStyle(name: string): { en: string; fill: string; edge: string } {
-  for (const [k, [en, fill, edge]] of Object.entries(SPECIAL)) if (name.includes(k)) return { en, fill, edge };
+/** DanPlates.png columns (OpenTaiko DANTICK 0–5). */
+export const DAN_PLATE_KINDS = ['wood', 'red', 'blue', 'silver', 'gold', 'white'] as const;
+
+export interface DanPlateOptions {
+  /** 'auto' = TJA DANTICK (or a guess from the name), 0–5 = DanPlates.png column, 'image' = custom image, 'none'. */
+  mode: 'auto' | number | 'image' | 'none';
+  /** Tint multiplied over the plate (DANTICKCOLOR); empty = TJA value / none. */
+  color?: string;
+  /** Name written on the plate; defaults to the TJA title. */
+  text?: string;
+  /** English line under the name (e.g. TENTH DAN) when the name is recognised. Defaults to true. */
+  english?: boolean;
+  /** Custom plate image (Dan_Plate.png), drawn as-is. */
+  image?: ImageSource;
+}
+
+/** English name and a plate column for a dan title like 十段, 五級, 初段 or 達人. */
+export function danPlateStyle(name: string): { en: string; tick: number } {
+  for (const [k, [en, tick]] of Object.entries(SPECIAL)) if (name.includes(k)) return { en, tick };
   const m = /([一二三四五六七八九十初])(段|級)/.exec(name);
   if (m) {
     const n = m[1] === '初' ? 1 : KANJI_NUM.indexOf(m[1]);
     const dan = m[2] === '段';
     const en = `${EN_NUM[n] ?? ''} ${dan ? 'DAN' : 'KYU'}`.trim();
-    if (!dan) return { en, fill: '#5cc3e8', edge: '#1f6488' };
-    return n >= 6 ? { en, fill: '#e8452c', edge: '#7a1607' } : { en, fill: '#3f7fe0', edge: '#163a7a' };
+    if (!dan) return { en, tick: 0 };
+    return { en, tick: n >= 6 ? 1 : 2 };
   }
-  return { en: '', fill: '#e8452c', edge: '#7a1607' };
+  return { en: '', tick: 1 };
 }
 
-/** A wooden plaque with the dan name written vertically (arcade-style dan plate). */
-export function drawDanPlate(name: string, k: number, fontFamily: string): OffscreenCanvas {
-  const W = Math.round(150 * k);
-  const H = Math.round(330 * k);
-  const c = new OffscreenCanvas(W, H);
-  const x = c.getContext('2d')!;
-  const { en, fill, edge } = danPlateStyle(name);
-  const pad = 6 * k;
-  // Slightly wavy top and bottom edges, like a painted wooden board.
-  const shape = () => {
-    x.beginPath();
-    x.moveTo(pad, pad + 10 * k);
-    x.quadraticCurveTo(W * 0.3, pad - 2 * k, W * 0.55, pad + 6 * k);
-    x.quadraticCurveTo(W * 0.8, pad + 12 * k, W - pad, pad);
-    x.lineTo(W - pad - 4 * k, H - pad - 12 * k);
-    x.quadraticCurveTo(W * 0.7, H - pad + 2 * k, W * 0.45, H - pad - 6 * k);
-    x.quadraticCurveTo(W * 0.2, H - pad - 12 * k, pad + 4 * k, H - pad);
-    x.closePath();
-  };
-  x.save();
-  x.shadowColor = 'rgba(0,0,0,0.35)';
-  x.shadowBlur = 6 * k;
-  x.shadowOffsetX = 3 * k;
-  x.shadowOffsetY = 3 * k;
-  shape();
-  x.fillStyle = edge;
-  x.fill();
-  x.restore();
-  x.save();
-  x.translate(W / 2, H / 2);
-  x.scale(0.93, 0.95);
-  x.translate(-W / 2, -H / 2);
-  shape();
-  const g = x.createLinearGradient(0, 0, W, H);
-  g.addColorStop(0, fill);
-  g.addColorStop(1, edge);
-  x.fillStyle = fill;
-  x.fill();
-  // Wood grain.
-  x.clip();
-  x.globalAlpha = 0.18;
-  x.strokeStyle = edge;
-  x.lineWidth = 2 * k;
-  for (let i = 0; i < 9; i++) {
-    const yy = (H / 9) * i + 12 * k;
-    x.beginPath();
-    x.moveTo(0, yy);
-    x.bezierCurveTo(W * 0.3, yy - 8 * k, W * 0.6, yy + 10 * k, W, yy - 4 * k);
-    x.stroke();
-  }
-  x.globalAlpha = 0.25;
-  x.fillStyle = g;
-  x.fillRect(0, 0, W, H);
-  x.restore();
+const PLATE_COLOURS: [string, string, string][] = [
+  // light, mid, dark
+  ['#ffe0a0', '#f6c46c', '#a8702c'],
+  ['#ff9a80', '#f0563a', '#8a1f0c'],
+  ['#9ce4f2', '#4ab0c8', '#1d5f78'],
+  ['#ffffff', '#c4c8cf', '#6b717a'],
+  ['#fff4b0', '#f2c230', '#8a6410'],
+  ['#ffffff', '#fff6e2', '#c9b88a'],
+];
 
-  // Vertical dan name.
-  const chars = [...name.replace(/\s+/g, '')].slice(0, 4);
-  const areaH = H - (en ? 90 : 50) * k;
-  const size = Math.min(92 * k, areaH / Math.max(1, chars.length));
-  x.font = `900 ${size}px ${fontFamily}`;
-  x.textAlign = 'center';
-  x.textBaseline = 'middle';
-  x.lineJoin = 'round';
-  const top = 24 * k + (areaH - size * chars.length) / 2;
-  chars.forEach((ch, i) => {
-    const cy = top + size * (i + 0.5);
-    x.lineWidth = size * 0.22;
-    x.strokeStyle = '#1a0d08';
-    x.strokeText(ch, W / 2, cy);
-    x.fillStyle = '#fff';
-    x.fillText(ch, W / 2, cy);
+/** Six blank wooden plates side by side (the layout of OpenTaiko's 3_DaniSelect/DanPlates.png). */
+export function drawDanPlatesSheet(k: number): OffscreenCanvas {
+  const PW = Math.round(190 * k);
+  const PH = Math.round(371 * k);
+  const c = new OffscreenCanvas(PW * 6, PH);
+  const x = c.getContext('2d')!;
+  PLATE_COLOURS.forEach(([light, mid, dark], i) => {
+    x.save();
+    x.translate(i * PW, 0);
+    const pad = 16 * k;
+    const shape = () => {
+      x.beginPath();
+      x.moveTo(pad, pad + 14 * k);
+      x.quadraticCurveTo(PW * 0.3, pad + 2 * k, PW * 0.5, pad + 10 * k);
+      x.quadraticCurveTo(PW * 0.75, pad + 16 * k, PW - pad, pad + 4 * k);
+      x.lineTo(PW - pad - 6 * k, PH - pad - 14 * k);
+      x.quadraticCurveTo(PW * 0.7, PH - pad, PW * 0.45, PH - pad - 8 * k);
+      x.quadraticCurveTo(PW * 0.2, PH - pad - 16 * k, pad + 4 * k, PH - pad - 2 * k);
+      x.closePath();
+    };
+    x.save();
+    x.shadowColor = 'rgba(0,0,0,0.4)';
+    x.shadowBlur = 8 * k;
+    x.shadowOffsetX = 4 * k;
+    x.shadowOffsetY = 4 * k;
+    shape();
+    x.fillStyle = '#000';
+    x.fill();
+    x.restore();
+    shape();
+    const metal = i === 3 || i === 4;
+    const g = metal ? x.createLinearGradient(0, 0, 0, PH) : x.createLinearGradient(0, 0, PW, 0);
+    if (metal) {
+      g.addColorStop(0, mid);
+      g.addColorStop(0.3, light);
+      g.addColorStop(0.5, mid);
+      g.addColorStop(0.7, dark);
+      g.addColorStop(1, mid);
+    } else {
+      g.addColorStop(0, light);
+      g.addColorStop(0.12, mid);
+      g.addColorStop(0.88, mid);
+      g.addColorStop(1, dark);
+    }
+    x.fillStyle = g;
+    x.fill();
+    x.lineWidth = 6 * k;
+    x.strokeStyle = '#000';
+    x.stroke();
+    if (!metal) {
+      x.save();
+      shape();
+      x.clip();
+      x.globalAlpha = 0.3;
+      x.strokeStyle = dark;
+      x.lineWidth = 2 * k;
+      for (let j = 0; j < 7; j++) {
+        const xx = PW * (0.12 + j * 0.13);
+        x.beginPath();
+        x.moveTo(xx, 0);
+        x.bezierCurveTo(xx + 20 * k, PH * 0.3, xx - 24 * k, PH * 0.6, xx + 10 * k, PH);
+        x.stroke();
+      }
+      x.restore();
+    }
+    x.restore();
   });
+  return c;
+}
+
+/**
+ * Plate with the dan name written vertically (OpenTaiko tDisplayDanPlate:
+ * DanPlates.png column tinted by DANTICKCOLOR, title offset (0, −50)).
+ */
+export function composeDanPlate(
+  sheet: ImageSource | OffscreenCanvas,
+  tick: number,
+  tint: string,
+  name: string,
+  english: boolean,
+  k: number,
+  fontFamily: string,
+): OffscreenCanvas {
+  const PW = Math.floor(sheet.width / 6);
+  const PH = sheet.height;
+  const c = new OffscreenCanvas(PW, PH);
+  const x = c.getContext('2d')!;
+  const col = Math.max(0, Math.min(5, tick));
+  x.drawImage(sheet, col * PW, 0, PW, PH, 0, 0, PW, PH);
+  if (tint && !/^#?f{3}(f{3})?$/i.test(tint)) {
+    x.globalCompositeOperation = 'multiply';
+    x.fillStyle = tint;
+    x.fillRect(0, 0, PW, PH);
+    x.globalCompositeOperation = 'destination-in';
+    x.drawImage(sheet, col * PW, 0, PW, PH, 0, 0, PW, PH);
+    x.globalCompositeOperation = 'source-over';
+  }
+  const en = english ? danPlateStyle(name).en : '';
+  const chars = [...name.replace(/\s+/g, '')];
+  if (chars.length) {
+    const avail = PH - (en ? 150 : 110) * k;
+    const size = Math.min(80 * k, avail / chars.length);
+    x.font = `900 ${size}px ${fontFamily}`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.lineJoin = 'round';
+    const cy0 = PH / 2 - (en ? 40 : 10) * k - (size * chars.length) / 2;
+    chars.forEach((ch, i) => {
+      const cy = cy0 + size * (i + 0.5);
+      x.lineWidth = size * 0.24;
+      x.strokeStyle = '#000';
+      x.strokeText(ch, PW / 2, cy);
+      x.fillStyle = '#fff';
+      x.fillText(ch, PW / 2, cy);
+    });
+  }
   if (en) {
     const words = en.split(' ');
-    const es = 21 * k;
-    x.font = `800 ${es}px ${fontFamily}`;
+    const es = 22 * k;
+    x.font = `900 ${es}px ${fontFamily}`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
     x.fillStyle = '#111';
     words.forEach((w, i) => {
-      const yy = H - (36 + (words.length - 1 - i) * 24) * k;
-      const mw = W - 30 * k;
+      const yy = PH - (62 + (words.length - 1 - i) * 26) * k;
+      const mw = PW - 50 * k;
       const tw = x.measureText(w).width;
       x.save();
-      x.translate(W / 2, yy);
+      x.translate(PW / 2, yy);
       if (tw > mw) x.scale(mw / tw, 1);
       x.fillText(w, 0, 0);
       x.restore();

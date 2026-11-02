@@ -226,6 +226,8 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     gaugeDanClearBase: `${G}/7_Gauge/1P_Dan_Clear_Base.png`,
     gaugeDanClear: `${G}/7_Gauge/1P_Dan_Clear.png`,
     taikoDanBackground: `${G}/6_Taiko/Dan_Background.png`,
+    danPlates: 'Graphics/3_DaniSelect/DanPlates.png',
+    loadingBackgroundDan: 'Graphics/4_SongLoading/Bg_Dan.png',
   },
   sounds: {
     don: 'Sounds/Taiko/dong.ogg',
@@ -234,6 +236,8 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     endClear: 'Sounds/Clear.ogg',
     endFullCombo: 'Sounds/Full combo.ogg|Sounds/FullCombo.ogg',
     endDondaFullCombo: 'Sounds/Donda Full Combo.ogg|Sounds/AllPerfect.ogg',
+    danSection: 'Sounds/Dan/Section.ogg|Sounds/Dan/Section.wav',
+    danSectionFirst: 'Sounds/Dan/Section_First.wav|Sounds/Dan/Section_First.ogg',
   },
   layout: OPENTAIKO_LAYOUT,
   hitEffect: { dir: `${G}/10_Effects/Hit` },
@@ -521,6 +525,7 @@ export function applyOpenTaikoIni(
     ['examOffset', 'Game_DanC_Exam_Offset'],
     ['subtitle', 'Game_DanC_SubTitle'],
     ['plate', 'Game_DanC_Dan_Plate'],
+    ['loadingPlate', 'SongLoading_DanPlate'],
   ];
   for (const [field, key] of pairKeys) {
     const v = xy(nums(game[key]));

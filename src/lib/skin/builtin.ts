@@ -6,6 +6,7 @@
  * It produces the same sprite-sheet formats an OpenTaiko-style skin uses, so
  * the renderer treats it like any other skin.
  */
+import { drawDanPlatesSheet } from '../render/dan';
 import type {
   CharaState,
   LoadedCharacter,
@@ -1607,8 +1608,90 @@ function taikoDanBackground(): OffscreenCanvas {
   return c;
 }
 
+/** Dan loading screen: night sky with a full moon and sakura (taller than the screen; it rises 90px). */
+function danLoadingBackground(): OffscreenCanvas {
+  const h = Math.round(H * (783 / 720));
+  const [c, ctx] = canvas(W, h);
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#0a1240');
+  g.addColorStop(0.6, '#1b2a78');
+  g.addColorStop(1, '#2d1b5e');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, h);
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 140; i++) circle(ctx, rnd() * W, rnd() * h * 0.8, rnd() * 2 + 0.5, `rgba(255,255,255,${0.3 + rnd() * 0.6})`);
+  // moon
+  const mg = ctx.createRadialGradient(470, 260, 30, 470, 260, 330);
+  mg.addColorStop(0, 'rgba(255,250,200,0.55)');
+  mg.addColorStop(1, 'rgba(255,250,200,0)');
+  ctx.fillStyle = mg;
+  ctx.fillRect(0, 0, W, h);
+  circle(ctx, 470, 260, 200, '#fff8c8');
+  circle(ctx, 420, 220, 34, 'rgba(230,220,160,0.6)');
+  circle(ctx, 530, 320, 22, 'rgba(230,220,160,0.5)');
+  // clouds
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  for (const [x, y, w] of [
+    [520, 300, 520],
+    [380, 380, 420],
+    [1300, 560, 380],
+  ] as const) {
+    roundRect(ctx, x, y, w, 46, 23);
+    ctx.fill();
+    roundRect(ctx, x + w * 0.25, y + 52, w * 0.6, 40, 20);
+    ctx.fill();
+  }
+  // sakura branch from the top right
+  ctx.strokeStyle = '#4a2a3a';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 26;
+  ctx.beginPath();
+  ctx.moveTo(W + 20, 40);
+  ctx.quadraticCurveTo(1500, 120, 1180, 90);
+  ctx.stroke();
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.moveTo(1500, 110);
+  ctx.quadraticCurveTo(1400, 220, 1300, 240);
+  ctx.stroke();
+  for (let i = 0; i < 260; i++) {
+    const t = rnd();
+    const x = 1150 + t * 800 + (rnd() - 0.5) * 220;
+    const y = 60 + (1 - t) * 60 + (rnd() - 0.3) * 220;
+    circle(ctx, x, y, 10 + rnd() * 16, `hsla(${335 + rnd() * 15}, 85%, ${80 + rnd() * 12}%, 0.85)`);
+  }
+  for (let i = 0; i < 60; i++) {
+    ctx.save();
+    ctx.translate(rnd() * W, rnd() * h);
+    ctx.rotate(rnd() * Math.PI);
+    ctx.fillStyle = 'rgba(255,200,225,0.8)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  // a row of drums seen from behind on a hill
+  ctx.fillStyle = '#0a0a24';
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.quadraticCurveTo(W / 2, h - 300, W, h);
+  ctx.fill();
+  for (const [x, r] of [
+    [700, 120],
+    [960, 160],
+    [1220, 120],
+  ] as const) {
+    circle(ctx, x, h - 160 - r * 0.4, r, '#14123a', '#ffd25e', 6);
+    text(ctx, '段', x, h - 160 - r * 0.4, r, 'rgba(255,210,94,0.85)', '', 'center', 900);
+  }
+  return c;
+}
+
 function danSprites(): Partial<Record<ImageKey, OffscreenCanvas>> {
   return {
+    danPlates: drawDanPlatesSheet(DK),
+    loadingBackgroundDan: danLoadingBackground(),
     danBackground: danBackgroundImage(),
     danBase: danBaseImage(false),
     danBaseSmall: danBaseImage(true),

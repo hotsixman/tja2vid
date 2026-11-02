@@ -82,6 +82,21 @@ export async function mixSoundtrack(
     src.start(when);
   }
 
+  // Dan-i dojo: section sound when each song's curtain starts (OpenTaiko Dan_Cert.Start).
+  const sections = play.dan?.sections ?? [];
+  if (sections.length) {
+    const [first, next] = await Promise.all([decode(skin.sounds.danSectionFirst), decode(skin.sounds.danSection)]);
+    sections.forEach((sec, i) => {
+      const buf = i === 0 ? first : next;
+      const at = (sec.start + opts.leadInMs) / 1000;
+      if (!buf || at < 0 || at * 1000 >= opts.durationMs) return;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(at);
+    });
+  }
+
   return ctx.startRendering();
 }
 

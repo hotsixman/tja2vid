@@ -2,7 +2,7 @@ import { lowerBound, stepAt, type Hit, type Judgement, type Playthrough, type Ro
 import type { CharaState, EndSequence, ImageKey, ImageSource, LoadedSkin } from '../skin/types';
 import { endAnimationTime, type EndResult } from '../endResult';
 import type { Note, NoteType } from '../tja/types';
-import { DanOverlay } from './dan';
+import { DanOverlay, type DanPlateOptions } from './dan';
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -36,8 +36,8 @@ export interface RenderOptions {
   intro?: { start: number; end: number };
   title: string;
   subtitle: string;
-  /** Dan-i dojo: Dan_Plate.png from the song folder (otherwise a plate is generated from the title). */
-  danPlate?: ImageSource;
+  /** Dan-i dojo plate (style, tint, name or a custom image). */
+  danPlate?: DanPlateOptions;
 }
 
 export interface NameplateInfo {
@@ -73,6 +73,8 @@ const CURTAIN_SQUEEZE = 0.0008;
 const INTRO_TRANSITION_MS = Math.ceil(640 / (CURTAIN_SLIDE_720 + 640 * CURTAIN_SQUEEZE));
 /** Arcade loading-screen length the timings below were measured for (ms). */
 const LOADING_REF_MS = 4284;
+/** Dan loading screen: fade to black at its end, then the game fades in. */
+const DAN_LOADING_FADE_MS = 250;
 /** OpenTaiko's score bounce (13ms per step). */
 const SCORE_SCALE = [1, 1.05, 1.1, 1.11, 1.12, 1.125, 1.12, 1.08, 1.065, 1.03, 1.015, 1];
 
@@ -213,7 +215,7 @@ export class TaikoRenderer implements FrameRenderer {
     this.charaSegments = this.buildCharaSegments();
     const GL = skin.manifest.layout;
     this.dan = play.dan
-      ? new DanOverlay(skin, play.dan, GL.gaugeRect[2] / GL.gaugeCells, GL.gauge[0], opts.title, opts.danPlate)
+      ? new DanOverlay(skin, play.dan, GL.gaugeRect[2] / GL.gaugeCells, GL.gauge[0], opts.title, opts.danPlate ?? { mode: 'auto' })
       : null;
   }
 
@@ -325,14 +327,24 @@ export class TaikoRenderer implements FrameRenderer {
 
     const intro = this.opts.intro;
     if (intro && t < intro.end) {
-      this.drawLoading(ctx, t);
+      if (this.dan) this.drawDanLoading(ctx, t);
+      else this.drawLoading(ctx, t);
       ctx.restore();
       return;
     }
 
     this.drawPlay(ctx, t);
 
-    if (intro && t < intro.end + INTRO_TRANSITION_MS) {
+    if (intro && this.dan) {
+      // Dan: the game fades in from black (the section curtain is already closed).
+      const a = 1 - (t - intro.end) / DAN_LOADING_FADE_MS;
+      if (a > 0) {
+        ctx.globalAlpha = Math.min(1, a);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, this.width, this.height);
+        ctx.globalAlpha = 1;
+      }
+    } else if (intro && t < intro.end + INTRO_TRANSITION_MS) {
       const p = (t - intro.end) / INTRO_TRANSITION_MS;
       if (this.skin.manifest.layout.loadingTransition === 'curtain') this.drawCurtain(ctx, t - intro.end);
       else {
@@ -750,6 +762,32 @@ export class TaikoRenderer implements FrameRenderer {
       );
     }
     ctx.globalAlpha = base;
+  }
+
+  /**
+   * Dan-i dojo loading screen (OpenTaiko CStage曲読み込み, dan branch): Bg_Dan
+   * rises 60px (720p) over the first 600ms, the dan plate sits at
+   * SongLoading_DanPlate, and the screen fades in from / out to black.
+   */
+  private drawDanLoading(ctx: Ctx2D, t: number): void {
+    const intro = this.opts.intro!;
+    const e = t - intro.start;
+    const left = intro.end - t;
+    const u = this.height / 720;
+    const bg = this.img('loadingBackgroundDan');
+    if (bg) {
+      const scale = this.width / bg.width;
+      ctx.drawImage(bg, 0, -Math.min(60, e / 10) * u, this.width, bg.height * scale);
+    } else this.drawLoadingBackground(ctx, 0, this.width);
+    const L = this.dan!.L;
+    this.dan!.drawPlate(ctx, L.loadingPlate[0], L.loadingPlate[1], this.skin.fontFamily);
+    const black = Math.max(1 - e / 51, 1 - left / DAN_LOADING_FADE_MS, 0);
+    if (black > 0) {
+      ctx.globalAlpha = Math.min(1, black);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, this.width, this.height);
+      ctx.globalAlpha = 1;
+    }
   }
 
   /** Loading background (or a plain gradient), shifted horizontally by dx. */

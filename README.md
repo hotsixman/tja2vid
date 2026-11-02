@@ -22,8 +22,10 @@ Svelte 5 + Vite로 만들었고, 모든 처리(채보 해석, 렌더링, 인코�
   - `EXAM1~7` 과제 바(전체 과제 / 곡별 과제 1st·2nd·3rd 배지, 지난 곡 결과 미니 바)
   - 진행에 따른 색 변화(보통 → 근접 → 달성(분홍) → 금 달성(무지개)), 깜빡임, 숫자 튀어오름, 달성 실패 표시
   - 魂ゲージ 과제 탭과 단위용 혼 게이지, 곡 사이 막(닫힘 → 곡 제목 → 열림, 곡 사이 7.2초)
-  - 오른쪽 단위 패: `Dan_Plate.png`가 있으면 그 이미지, 없으면 제목(예: 十段)으로 나무 패를 그립니다
-  - Nijiiro / TJAPlayer3 스킨의 `17_DanC`, `7_Gauge/1P_Dan*`, `6_Taiko/Dan_Background.png`, `5_Background/1`(단위 배경)을 씁니다. 기본 스킨에도 단위용 그래픽이 들어 있습니다
+  - 단위 전용 로딩 화면: `4_SongLoading/Bg_Dan.png`가 올라가고 오른쪽 위에 단위 패, 검은 화면으로 페이드한 뒤 막이 닫힌 게임 화면으로 넘어갑니다
+  - 단위 패는 옵션에서 고릅니다: 자동(TJA `DANTICK`/`DANTICKCOLOR`), 나무·빨강·파랑·은·금·흰색, 패 글자, 색, 영문 이름(예: TENTH DAN), 이미지(`Dan_Plate.png`), 표시 안 함
+  - 곡마다 막 효과음(`Sounds/Dan/Section_First`, `Section`)
+  - Nijiiro / TJAPlayer3 스킨의 `17_DanC`, `7_Gauge/1P_Dan*`, `6_Taiko/Dan_Background.png`, `5_Background/1`(단위 위 배경), `3_DaniSelect/DanPlates.png`, `4_SongLoading/Bg_Dan.png`를 씁니다. 기본 스킨에도 단위용 그래픽이 들어 있습니다
 
 ## 시작하기
 

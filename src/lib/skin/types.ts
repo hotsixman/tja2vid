@@ -109,15 +109,26 @@ export const IMAGE_KEYS = [
   'gaugeDanClearBase',
   'gaugeDanClear',
   'taikoDanBackground',
+  'danPlates',
+  'loadingBackgroundDan',
 ] as const;
 
 /** Images only used by dan-i dojo courses (not reported as missing). */
 export const DAN_IMAGE_KEYS: readonly ImageKey[] = IMAGE_KEYS.filter(
-  (k) => k.startsWith('dan') || k.startsWith('gaugeDan') || k === 'taikoDanBackground',
+  (k) => k.startsWith('dan') || k.startsWith('gaugeDan') || k === 'taikoDanBackground' || k === 'loadingBackgroundDan',
 );
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 
-export const SOUND_KEYS = ['don', 'ka', 'balloonPop', 'endClear', 'endFullCombo', 'endDondaFullCombo'] as const;
+export const SOUND_KEYS = [
+  'don',
+  'ka',
+  'balloonPop',
+  'endClear',
+  'endFullCombo',
+  'endDondaFullCombo',
+  'danSection',
+  'danSectionFirst',
+] as const;
 export type SoundKey = (typeof SOUND_KEYS)[number];
 
 type XY = [number, number];
@@ -546,6 +557,8 @@ export interface DanLayout {
   titleSize: number;
   subtitleSize: number;
   titleMaxWidth: number;
-  /** Dan plate (Dan_Plate.png from the song folder) centre. */
+  /** Dan plate centre in play (OpenTaiko Game_DanC_Dan_Plate). */
   plate: XY;
+  /** Dan plate centre on the dan loading screen (SongLoading_DanPlate). */
+  loadingPlate: XY;
 }

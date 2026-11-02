@@ -105,6 +105,9 @@ export interface DanSong {
 
 export interface DanInfo {
   songs: DanSong[];
+  /** DANTICK (dan plate style, 0–5) and DANTICKCOLOR. */
+  tick?: number;
+  tickColor?: string;
   /** Exams by slot as first defined (global values). */
   exams: (DanExam | null)[];
 }

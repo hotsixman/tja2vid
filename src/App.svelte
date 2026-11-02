@@ -34,8 +34,15 @@
   /** Every decoded audio file by lower-case name (dan courses pick theirs from here). */
   let audioBank = $state<Record<string, AudioBuffer>>({});
   let audioError = $state('');
-  /** Dan-i dojo: Dan_Plate.png dropped with the TJA. */
-  let danPlate = $state<ImageBitmap | undefined>(undefined);
+  /** Dan-i dojo plate: Dan_Plate.png dropped with the TJA, or chosen in the options. */
+  let danPlateImage = $state<ImageBitmap | undefined>(undefined);
+  let danPlateMode = $state<'auto' | 'image' | 'none' | number>('auto');
+  let danPlateTint = $state(false);
+  let danPlateTintColor = $state('#ffffff');
+  const danPlateColor = $derived(danPlateTint ? danPlateTintColor : '');
+  const PLATE_KINDS = ['나무', '빨강', '파랑', '은', '금', '흰색'];
+  let danPlateText = $state('');
+  let danPlateEnglish = $state(true);
   let pendingAudio: File[] = [];
 
   let courseIndex = $state(0);
@@ -235,7 +242,13 @@
     genre: showGenre
       ? { text: genreOverride || (course?.dan ? '段位道場' : parsed?.meta.genre) || '', background: genreBg, color: genreColor }
       : undefined,
-    danPlate,
+    danPlate: {
+      mode: danPlateMode === 'image' && !danPlateImage ? 'auto' : danPlateMode,
+      color: danPlateColor,
+      text: danPlateText || undefined,
+      english: danPlateEnglish,
+      image: danPlateImage,
+    },
     nameplate: showNameplate
       ? { name: npName }
       : undefined,
@@ -351,6 +364,11 @@
     }
   }
 
+  async function loadPlateImage(f: File) {
+    danPlateImage = await createImageBitmap(f).catch(() => undefined);
+    if (danPlateImage) danPlateMode = 'image';
+  }
+
   /** Whether the loaded TJA has a dan-i dojo course with #NEXTSONG songs. */
   const isDanTja = () => !!parsed?.courses.some((c) => c.course === 'Dan' && c.body.some((l) => /^#NEXTSONG\b/i.test(l)));
 
@@ -393,8 +411,13 @@
     const tja = files.find(isTja);
     pendingAudio = files.filter(isAudio);
     const plate = files.find((f) => /^dan_plate\.png$/i.test(f.name));
-    if (tja) danPlate = undefined;
-    if (plate) danPlate = await createImageBitmap(plate).catch(() => undefined);
+    if (tja) {
+      danPlateImage = undefined;
+      danPlateText = '';
+      danPlateTint = false;
+      if (danPlateMode === 'image') danPlateMode = 'auto';
+    }
+    if (plate) await loadPlateImage(plate);
     if (tja) await loadTja(tja);
     else if (pendingAudio.length) {
       if (course?.dan) await loadAudioBank(pendingAudio);
@@ -564,6 +587,43 @@
           <label>제목 <input type="text" placeholder={parsed.meta.title} bind:value={titleOverride} /></label>
           <label>부제 <input type="text" placeholder={parsed.meta.subtitle} bind:value={subtitleOverride} /></label>
           <p class="hint">{stats}</p>
+          {#if course?.dan}
+            <h3>단위 도장</h3>
+            <p class="hint">
+              {course.dan.songs.map((s, i) => `${i + 1}곡: ${s.title}`).join(' · ')}
+            </p>
+            <label>
+              단위 패
+              <select bind:value={danPlateMode}>
+                <option value="auto">
+                  자동 (TJA{course.dan.tick !== undefined ? ` DANTICK ${course.dan.tick}: ${PLATE_KINDS[course.dan.tick]}` : ' 제목으로 추정'})
+                </option>
+                {#each PLATE_KINDS as k, i (k)}<option value={i}>{k}</option>{/each}
+                {#if danPlateImage}<option value="image">이미지 (Dan_Plate.png)</option>{/if}
+                <option value="none">표시 안 함</option>
+              </select>
+            </label>
+            {#if danPlateMode !== 'none' && danPlateMode !== 'image'}
+              <label>패 글자 <input type="text" placeholder={parsed.meta.title} bind:value={danPlateText} /></label>
+              <label class="check">
+                <input type="checkbox" bind:checked={danPlateTint} />
+                패 색 직접 지정 {#if !danPlateTint && course.dan.tickColor}(TJA DANTICKCOLOR {course.dan.tickColor}){/if}
+              </label>
+              {#if danPlateTint}<label>패 색 <input type="color" bind:value={danPlateTintColor} /></label>{/if}
+              <label class="check"><input type="checkbox" bind:checked={danPlateEnglish} /> 영문 이름 표시 (예: TENTH DAN)</label>
+            {/if}
+            <label>
+              패 이미지 (Dan_Plate.png)
+              <input
+                type="file"
+                accept="image/*"
+                onchange={(e) => {
+                  const f = (e.target as HTMLInputElement).files?.[0];
+                  if (f) void loadPlateImage(f);
+                }}
+              />
+            </label>
+          {/if}
         {/if}
       {/if}
 
