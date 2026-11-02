@@ -143,3 +143,48 @@ describe('decodeTja', () => {
     expect(decodeTja(bytes)).toBe('A');
   });
 });
+
+describe('dan-i dojo', () => {
+  const tja = [
+    'TITLE:Test Dan',
+    'BPM:120',
+    'COURSE:Dan',
+    'LEVEL:10',
+    'BALLOON:5',
+    'EXAM1:g,92,100,m',
+    'EXAM2:jb,35,16,l',
+    '#START',
+    '#NEXTSONG Song A,Sub A,,a.ogg,350,80,9,3',
+    'EXAM3:r,18,24,m',
+    '1111,',
+    '#NEXTSONG Song\\, B,,,b.ogg',
+    'EXAM3:r,40,62,m',
+    '#DELAY 0.5',
+    '2222,',
+    '#END',
+  ].join('\n');
+
+  it('joins songs with the OpenTaiko gap and collects exams', () => {
+    const parsed = parseTja(tja);
+    const src = parsed.courses[0];
+    expect(src.course).toBe('Dan');
+    const c = buildCourse(parsed.meta, src);
+    const dan = c.dan!;
+    expect(dan.songs.map((s) => s.title)).toEqual(['Song A', 'Song, B']);
+    expect(dan.songs[0].chipTime).toBe(0);
+    expect(dan.songs[0].audioStart).toBe(7200);
+    expect(dan.songs[0].scoreInit).toBe(350);
+    // One 4/4 bar at 120 BPM = 2000ms.
+    expect(dan.songs[1].chipTime).toBe(9200);
+    expect(dan.songs[1].audioStart).toBe(16400);
+    expect(c.notes[0].time).toBe(7200);
+    expect(c.notes[4].time).toBe(16900);
+    // Global exams fill song 0; the per-song exam 3 differs per song.
+    expect(dan.songs[0].exams[0]?.type).toBe('gauge');
+    expect(dan.songs[0].exams[1]).toEqual({ type: 'judgeBad', values: [35, 16], range: 'less' });
+    expect(dan.songs[0].exams[2]?.values).toEqual([18, 24]);
+    expect(dan.songs[1].exams[2]?.values).toEqual([40, 62]);
+    expect(dan.songs[1].exams[0]).toBeNull();
+    expect(dan.exams[2]?.values).toEqual([18, 24]);
+  });
+});

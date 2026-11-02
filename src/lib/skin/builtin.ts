@@ -144,6 +144,29 @@ export const BUILTIN_LAYOUT: SkinLayout = {
     rotate: true,
   },
   scoreAdd: [24, 440],
+  // Dan-i dojo panel: OpenTaiko's 720p layout ×1.5, with the soul gauge tab
+  // placed so its marker points at the exam value on this skin's gauge.
+  dan: {
+    gaugeExam: [1262, 172],
+    numberSize: [72, 87],
+    smallNumberSize: [36, 44],
+    miniNumberSize: [34, 42],
+    examTypeSize: [371, 42],
+    examRangeSize: [81, 45],
+    titleSize: 60,
+    subtitleSize: 42,
+    plate: [1690, 802],
+  },
+};
+
+/** Dan-i dojo upper background: deep indigo sky with gold waves and stars. */
+const DAN_BACKGROUND: BackgroundSpec = {
+  color: '#0b0a18',
+  layers: [
+    { image: 'gen:danSky', width: W, height: 282 },
+    { image: 'gen:danWaves', width: W, height: 282, tileX: true, tileY: true, scrollX: 18 },
+    { image: 'gen:stars', width: W, height: 282, tileX: true, tileY: true, scrollX: 10, scrollY: 4 },
+  ],
 };
 
 const BACKGROUND: BackgroundSpec = {
@@ -168,6 +191,7 @@ export const BUILTIN_MANIFEST: SkinManifest = {
   sounds: {},
   layout: BUILTIN_LAYOUT,
   background: BACKGROUND,
+  danBackground: DAN_BACKGROUND,
   credits: 'tja2vid 기본 스킨 — 코드로 생성된 오리지널 그래픽과 합성 타격음.',
 };
 
@@ -1147,6 +1171,471 @@ function rainbowFrames(): OffscreenCanvas[] {
   });
 }
 
+// ------------------------------------------------------------------ dan-i dojo
+
+// Sizes follow OpenTaiko's 17_DanC textures at 1.5× (this skin is 1080p).
+const DK = 1.5;
+const DAN_GAUGE_W = 645 * DK;
+const DAN_GAUGE_H = 54 * DK;
+
+function danSky(): OffscreenCanvas {
+  const [c, ctx] = canvas(W, 282);
+  const g = ctx.createLinearGradient(0, 0, 0, 282);
+  g.addColorStop(0, '#0d1846');
+  g.addColorStop(1, '#26135a');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, 282);
+  return c;
+}
+
+/** Seigaiha (wave) pattern in gold, tiled. */
+function danWavesTile(): OffscreenCanvas {
+  const R = 36;
+  const [c, ctx] = canvas(R * 4, R * 2);
+  ctx.strokeStyle = 'rgba(255,210,94,0.16)';
+  ctx.lineWidth = 3;
+  for (let row = 0; row < 3; row++) {
+    for (let col = -1; col < 3; col++) {
+      const cx = col * R * 2 + (row % 2 ? R : 0);
+      const cy = row * R;
+      for (let r = R; r > 6; r -= 9) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, Math.PI, 0);
+        ctx.stroke();
+      }
+    }
+  }
+  return c;
+}
+
+/** Bottom panel behind the exams (transparent above y=538). */
+function danBackgroundImage(): OffscreenCanvas {
+  const [c, ctx] = canvas(W, H);
+  const top = 538;
+  const g = ctx.createLinearGradient(0, top, 0, H);
+  g.addColorStop(0, '#1d1840');
+  g.addColorStop(1, '#0b0a18');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, top, W, H - top);
+  // diagonal grid
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, top, W, H - top);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 2;
+  for (let x = -H; x < W + H; x += 46) {
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x + (H - top), H);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, H);
+    ctx.lineTo(x + (H - top), top);
+    ctx.stroke();
+  }
+  // neon glows in the corners
+  for (const [x, col] of [
+    [0, 'rgba(255,95,162,0.25)'],
+    [W, 'rgba(53,195,255,0.22)'],
+  ] as const) {
+    const rg = ctx.createRadialGradient(x, H, 10, x, H, 520);
+    rg.addColorStop(0, col);
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, top, W, H - top);
+  }
+  ctx.restore();
+  // gold rim
+  const rim = ctx.createLinearGradient(0, 0, W, 0);
+  rim.addColorStop(0, '#b67c00');
+  rim.addColorStop(0.5, '#ffe9a6');
+  rim.addColorStop(1, '#b67c00');
+  ctx.fillStyle = rim;
+  ctx.fillRect(0, top, W, 6);
+  ctx.fillStyle = 'rgba(255,95,162,0.7)';
+  ctx.fillRect(0, top + 6, W, 2);
+  return c;
+}
+
+/** Exam bar base: two rows (whole-dan / per-song), body + dark gauge slot (+ placeholders for past songs). */
+function danBaseImage(small: boolean): OffscreenCanvas {
+  const w = (small ? 503 : 1006) * DK;
+  const rh = 92 * DK;
+  const [c, ctx] = canvas(w, rh * 2);
+  for (let row = 0; row < 2; row++) {
+    const y0 = row * rh;
+    const individual = row === 1;
+    // body
+    roundRect(ctx, 2, y0 + 14, w - 4, rh - 18, 18);
+    const g = ctx.createLinearGradient(0, y0, 0, y0 + rh);
+    g.addColorStop(0, '#2b2556');
+    g.addColorStop(1, '#1a1638');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = individual ? 'rgba(255,95,162,0.85)' : 'rgba(53,195,255,0.75)';
+    ctx.stroke();
+    // emblem (whole-dan exams)
+    if (!individual) {
+      const cx = 42;
+      const cy = y0 + 86;
+      const eg = ctx.createRadialGradient(cx - 6, cy - 6, 2, cx, cy, 24);
+      eg.addColorStop(0, '#fff3c4');
+      eg.addColorStop(1, COLOR.gold);
+      circle(ctx, cx, cy, 22, eg, COLOR.outline, 3);
+      text(ctx, '魂', cx, cy + 1, 24, COLOR.outline, '', 'center', 900);
+      const fade = ctx.createLinearGradient(66, 0, 260, 0);
+      fade.addColorStop(0, 'rgba(255,210,94,0.35)');
+      fade.addColorStop(1, 'rgba(255,210,94,0)');
+      ctx.fillStyle = fade;
+      ctx.fillRect(66, cy - 18, 194, 36);
+    }
+    // gauge slot
+    const sx = 259 * DK - 4;
+    const ext = individual ? (small ? 0.215 * 0.663333333 : 0.663333333) : small ? 0.32154 : 1;
+    const sw = DAN_GAUGE_W * ext + 8;
+    const sy = y0 + rh + 9 * DK - 27 * DK - DAN_GAUGE_H - 4;
+    roundRect(ctx, sx, sy, sw, DAN_GAUGE_H + 8, 12);
+    ctx.fillStyle = '#07060f';
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(sx + 6, sy + 6, sw - 12, 10);
+    // placeholders for the previous songs' mini bars
+    if (individual) {
+      const px = (small ? 410 : 745) * DK;
+      const pw = 159 * DK * (small ? 0.34 : 1);
+      for (let j = 0; j < 2; j++) {
+        const py = y0 + (119 - 92 - 9) * DK + j * 33 * DK;
+        circle(ctx, px - 15 * DK, py + 12 * DK, 10 * DK, 'rgba(255,255,255,0.08)');
+        roundRect(ctx, px, py, pw, 23 * DK, 8);
+        ctx.fillStyle = 'rgba(255,255,255,0.07)';
+        ctx.fill();
+      }
+    }
+  }
+  return c;
+}
+
+function danGaugeImage(top: string, bottom: string, stripes = true): OffscreenCanvas {
+  const [c, ctx] = canvas(DAN_GAUGE_W, DAN_GAUGE_H);
+  roundRect(ctx, 0, 0, DAN_GAUGE_W, DAN_GAUGE_H, 10);
+  ctx.save();
+  ctx.clip();
+  const g = ctx.createLinearGradient(0, 0, 0, DAN_GAUGE_H);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, DAN_GAUGE_W, DAN_GAUGE_H);
+  if (stripes) {
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    for (let x = -DAN_GAUGE_H; x < DAN_GAUGE_W; x += 36) {
+      ctx.beginPath();
+      ctx.moveTo(x, DAN_GAUGE_H);
+      ctx.lineTo(x + 16, DAN_GAUGE_H);
+      ctx.lineTo(x + 16 + DAN_GAUGE_H, 0);
+      ctx.lineTo(x + DAN_GAUGE_H, 0);
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(0, 0, DAN_GAUGE_W, DAN_GAUGE_H * 0.22);
+  ctx.restore();
+  return c;
+}
+
+function danRainbowFrames(): OffscreenCanvas[] {
+  return Array.from({ length: 21 }, (_, f) => {
+    const [c, ctx] = canvas(DAN_GAUGE_W, DAN_GAUGE_H);
+    roundRect(ctx, 0, 0, DAN_GAUGE_W, DAN_GAUGE_H, 10);
+    ctx.clip();
+    const g = ctx.createLinearGradient(0, 0, DAN_GAUGE_W, 0);
+    for (let i = 0; i <= 12; i++) g.addColorStop(i / 12, `hsl(${(i * 30 + f * 360 / 21) % 360}, 95%, 64%)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, DAN_GAUGE_W, DAN_GAUGE_H);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(0, 0, DAN_GAUGE_W, DAN_GAUGE_H * 0.22);
+    return c;
+  });
+}
+
+/** Soul gauge exam tab: label pill, "%以上" and a marker pointing at the exam value. */
+function danGaugeTab(): OffscreenCanvas {
+  const w = 391 * DK;
+  const h = 78 * DK;
+  const [c, ctx] = canvas(w, h);
+  const mx = 572;
+  roundRect(ctx, 2, 6, w - 4, 60, 16);
+  ctx.fillStyle = 'rgba(20,16,44,0.92)';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = COLOR.gold;
+  ctx.stroke();
+  roundRect(ctx, 12, 14, 290, 36, 18);
+  ctx.fillStyle = '#3b2f6e';
+  ctx.fill();
+  text(ctx, '%以上', 494, 38, 28, '#fff', COLOR.outline, 'center', 900);
+  // marker + arrow
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(mx - 3, 46, 6, h - 46);
+  ctx.strokeStyle = COLOR.outline;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(mx - 3, 46, 6, h - 46);
+  ctx.beginPath();
+  ctx.moveTo(mx - 12, 18);
+  ctx.lineTo(mx + 12, 18);
+  ctx.lineTo(mx, 44);
+  ctx.closePath();
+  ctx.fillStyle = COLOR.don;
+  ctx.fill();
+  ctx.stroke();
+  return c;
+}
+
+function danFailedImage(): OffscreenCanvas {
+  const [c, ctx] = canvas(DAN_GAUGE_W, DAN_GAUGE_H);
+  roundRect(ctx, 0, 0, DAN_GAUGE_W, DAN_GAUGE_H, 10);
+  ctx.fillStyle = 'rgba(14,8,24,0.88)';
+  ctx.fill();
+  text(ctx, '達成失敗', DAN_GAUGE_W / 2, DAN_GAUGE_H / 2 + 2, 52, '#ff3b5c', '#fff', 'center', 900);
+  return c;
+}
+
+/** Digit sheet with a white row and a gold (better pass) row. */
+function danDigits(cw: number, ch: number): OffscreenCanvas {
+  const [c, ctx] = canvas(cw * 10, ch * 2);
+  for (let row = 0; row < 2; row++) {
+    for (let d = 0; d < 10; d++) {
+      let fill: string | CanvasGradient = '#ffffff';
+      if (row === 1) {
+        const g = ctx.createLinearGradient(0, ch, 0, ch * 2);
+        g.addColorStop(0, '#fff7c2');
+        g.addColorStop(1, COLOR.gold);
+        fill = g;
+      }
+      text(ctx, String(d), cw * d + cw / 2, ch * row + ch / 2 + 2, ch * 0.92, fill, COLOR.outline, 'center', 900);
+    }
+  }
+  return c;
+}
+
+function danExamTypePill(): OffscreenCanvas {
+  const [c, ctx] = canvas(371, 42);
+  roundRect(ctx, 2, 2, 367, 38, 19);
+  const g = ctx.createLinearGradient(0, 0, 0, 42);
+  g.addColorStop(0, '#4a3c8a');
+  g.addColorStop(1, '#2d2560');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = COLOR.gold;
+  ctx.stroke();
+  return c;
+}
+
+function danExamRangeImage(): OffscreenCanvas {
+  const [c, ctx] = canvas(81, 90);
+  text(ctx, '以上', 40, 23, 32, '#fff', COLOR.outline, 'center', 900);
+  text(ctx, '未満', 40, 68, 32, '#ffd2ec', COLOR.outline, 'center', 900);
+  return c;
+}
+
+const SONG_BADGE = [
+  ['1st', '#5fe08a'],
+  ['2nd', '#35c3ff'],
+  ['3rd', '#ff5fa2'],
+] as const;
+
+function danExamCymbolImage(): OffscreenCanvas {
+  const rh = 41 * DK;
+  const [c, ctx] = canvas(197 * DK, rh * 3);
+  SONG_BADGE.forEach(([label, col], i) => {
+    const y = i * rh;
+    const fade = ctx.createLinearGradient(0, 0, 296, 0);
+    fade.addColorStop(0, col);
+    fade.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = fade;
+    ctx.fillRect(10, y + 12, 286, rh - 24);
+    ctx.globalAlpha = 1;
+    roundRect(ctx, 8, y + 10, 76, rh - 20, (rh - 20) / 2);
+    ctx.fillStyle = col;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = COLOR.outline;
+    ctx.stroke();
+    text(ctx, label, 46, y + rh / 2 + 1, 24, '#fff', COLOR.outline, 'center', 900);
+  });
+  return c;
+}
+
+function danSmallBaseImage(): OffscreenCanvas {
+  const [c, ctx] = canvas(159 * DK, 23 * DK);
+  roundRect(ctx, 1, 1, 159 * DK - 2, 23 * DK - 2, 8);
+  ctx.fillStyle = '#07060f';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.stroke();
+  return c;
+}
+
+function danSmallCymbolImage(): OffscreenCanvas {
+  const rh = 28 * DK;
+  const [c, ctx] = canvas(30 * DK, rh * 2);
+  SONG_BADGE.slice(0, 2).forEach(([label, col], i) => {
+    circle(ctx, 22, i * rh + rh / 2, 19, col, COLOR.outline, 2);
+    text(ctx, label, 22, i * rh + rh / 2 + 1, 13, '#fff', COLOR.outline, 'center', 900);
+  });
+  return c;
+}
+
+/** Section curtain over the lane: two panels with a drum emblem each. */
+function danScreenImage(): OffscreenCanvas {
+  const w = 1400;
+  const h = 200;
+  const [c, ctx] = canvas(w, h);
+  for (let half = 0; half < 2; half++) {
+    const x0 = half * (w / 2);
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#3b1d5c');
+    g.addColorStop(1, '#16102e');
+    ctx.fillStyle = g;
+    ctx.fillRect(x0, 0, w / 2, h);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, 0, w / 2, h);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,210,94,0.12)';
+    ctx.lineWidth = 3;
+    for (let row = 0; row < 7; row++) {
+      for (let col = -1; col < 12; col++) {
+        const cx = x0 + col * 72 + (row % 2 ? 36 : 0);
+        const cy = row * 36;
+        for (let r = 36; r > 8; r -= 9) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, Math.PI, 0);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+    // drum emblem
+    const cx = x0 + w / 4;
+    const cy = h / 2;
+    circle(ctx, cx, cy, 78, COLOR.outline);
+    circle(ctx, cx, cy, 72, COLOR.rim);
+    const dg = ctx.createRadialGradient(cx - 20, cy - 24, 8, cx, cy, 64);
+    dg.addColorStop(0, '#ff9aa4');
+    dg.addColorStop(1, COLOR.donDark);
+    circle(ctx, cx, cy, 60, dg);
+    text(ctx, '段', cx, cy + 3, 70, '#fff', COLOR.outline, 'center', 900);
+    // gold trims
+    ctx.fillStyle = COLOR.gold;
+    ctx.fillRect(x0, 0, w / 2, 6);
+    ctx.fillRect(x0, h - 6, w / 2, 6);
+  }
+  // seam
+  ctx.fillStyle = COLOR.outline;
+  ctx.fillRect(w / 2 - 4, 0, 8, h);
+  for (const y of [h / 2 - 30, h / 2 + 30]) {
+    circle(ctx, w / 2 - 14, y, 5, COLOR.gold);
+    circle(ctx, w / 2 + 14, y, 5, COLOR.gold);
+  }
+  return c;
+}
+
+/** Soul gauge in dan mode: one colour, gold from the exam value onward. */
+function danSoulGauge(kind: 'base' | 'fill' | 'clearBase' | 'clear'): OffscreenCanvas {
+  const [c, ctx] = canvas(1040, 60);
+  const cells = 50;
+  const cw = 1040 / cells;
+  roundRect(ctx, 0, 0, 1040, 60, 12);
+  ctx.save();
+  ctx.clip();
+  for (let i = 0; i < cells; i++) {
+    ctx.fillStyle =
+      kind === 'base'
+        ? '#2c1a2e'
+        : kind === 'clearBase'
+          ? '#4a3612'
+          : kind === 'fill'
+            ? `hsl(${352 + (i % 2) * 4}, 88%, ${50 + (i % 2) * 4}%)`
+            : `hsl(${44 + (i % 2) * 4}, 100%, ${58 + (i % 2) * 4}%)`;
+    ctx.fillRect(i * cw, 0, cw, 60);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(i * cw + cw - 2, 0, 2, 60);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(0, 0, 1040, 14);
+  ctx.restore();
+  if (kind === 'base') {
+    roundRect(ctx, 0, 0, 1040, 60, 12);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = COLOR.outline;
+    ctx.stroke();
+  }
+  return c;
+}
+
+function taikoDanBackground(): OffscreenCanvas {
+  const [c, ctx] = canvas(520, 260);
+  const g = ctx.createLinearGradient(0, 0, 520, 260);
+  g.addColorStop(0, '#2b3f9e');
+  g.addColorStop(1, '#1a1150');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 520, 260);
+  ctx.strokeStyle = 'rgba(255,210,94,0.14)';
+  ctx.lineWidth = 3;
+  for (let row = 0; row < 9; row++) {
+    for (let col = -1; col < 9; col++) {
+      const cx = col * 72 + (row % 2 ? 36 : 0);
+      const cy = row * 36;
+      for (let r = 36; r > 8; r -= 9) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, Math.PI, 0);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(0, 0, 520, 6);
+  ctx.fillRect(0, 254, 520, 6);
+  return c;
+}
+
+function danSprites(): Partial<Record<ImageKey, OffscreenCanvas>> {
+  return {
+    danBackground: danBackgroundImage(),
+    danBase: danBaseImage(false),
+    danBaseSmall: danBaseImage(true),
+    danGaugeNormal: danGaugeImage('#ffcf4d', '#ff8a3d'),
+    danGaugeReach: danGaugeImage('#fffbb0', '#ffe14d'),
+    danGaugeClear: danGaugeImage('#ffb3dc', '#ff5fa2'),
+    danGaugeFlush: danGaugeImage('#d8d4e8', '#8d8aa0', false),
+    danGaugeLow: danGaugeImage('#ff8a8a', '#e0303f'),
+    danGaugeBase: danGaugeTab(),
+    danFailed: danFailedImage(),
+    danNumber: danDigits(72, 87),
+    danSmallNumber: danDigits(36, 44),
+    danMiniNumber: danDigits(34, 42),
+    danExamType: danExamTypePill(),
+    danExamRange: danExamRangeImage(),
+    danExamCymbol: danExamCymbolImage(),
+    danScreen: danScreenImage(),
+    danSmallBase: danSmallBaseImage(),
+    danSmallExamCymbol: danSmallCymbolImage(),
+    gaugeDanBase: danSoulGauge('base'),
+    gaugeDan: danSoulGauge('fill'),
+    gaugeDanClearBase: danSoulGauge('clearBase'),
+    gaugeDanClear: danSoulGauge('clear'),
+    taikoDanBackground: taikoDanBackground(),
+  };
+}
+
 // ------------------------------------------------------------------ nameplate
 
 /** Nameplate sheet in the standard 12-row layout (rows of 81px = 54px × 1.5). */
@@ -1662,6 +2151,8 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       scoreRank: scoreRankSheet(),
       comboBalloon: comboBalloonSheet(),
       comboBalloonNumber: comboBalloonNumbers(),
+      courseDan: courseBadge('段位道場', '#7c4dff'),
+      ...danSprites(),
     };
     const layerSprites: Record<string, OffscreenCanvas> = {
       'gen:sky': sky(false),
@@ -1672,6 +2163,8 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       'gen:stageClear': stage(true),
       'gen:lights': lightsTile(),
       'gen:confetti': confettiTile(),
+      'gen:danSky': danSky(),
+      'gen:danWaves': danWavesTile(),
     };
 
     const images: LoadedSkin['images'] = {};
@@ -1748,9 +2241,11 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
     };
 
     const gaugeRainbow = { frames: await Promise.all(rainbowFrames().map(bitmap)), frameMs: 50 };
+    const danRainbow = { frames: await Promise.all(danRainbowFrames().map(bitmap)), frameMs: 30 };
 
     return {
       gaugeRainbow,
+      danRainbow,
       manifest: BUILTIN_MANIFEST,
       images,
       sounds: {

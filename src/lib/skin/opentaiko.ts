@@ -1,4 +1,4 @@
-import type { DancerConfig, SkinLayout, SkinManifest } from './types';
+import type { DancerConfig, DanLayout, SkinLayout, SkinManifest } from './types';
 
 /*
  * Compatibility with OpenTaiko / TJAPlayer3-format skin folders.
@@ -161,6 +161,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     courseNormal: `${G}/4_CourseSymbol/Normal.png`,
     courseHard: `${G}/4_CourseSymbol/Hard.png`,
     courseOni: `${G}/4_CourseSymbol/Oni.png`,
+    courseDan: `${G}/4_CourseSymbol/Dan.png`,
     courseEdit: `${G}/4_CourseSymbol/Edit.png`,
     gaugeBase: `${G}/7_Gauge/1P_Base.png`,
     gaugeFill: `${G}/7_Gauge/1P.png`,
@@ -201,6 +202,30 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     genreTemplate: `${G}/13_GENRE/Template.png`,
     scoreAdd: `${G}/6_Taiko/Score_1P.png`,
     gogoSplash: `${G}/10_Effects/GoGoSplash.png`,
+    danBackground: `${G}/17_DanC/Background.png`,
+    danBase: `${G}/17_DanC/Base.png`,
+    danBaseSmall: `${G}/17_DanC/Base_Small.png`,
+    danGaugeNormal: `${G}/17_DanC/Gauge_Normal.png`,
+    danGaugeReach: `${G}/17_DanC/Gauge_Reach.png`,
+    danGaugeClear: `${G}/17_DanC/Gauge_Clear.png`,
+    danGaugeFlush: `${G}/17_DanC/Gauge_Flush.png`,
+    danGaugeLow: `${G}/17_DanC/Gauge_Low.png`,
+    danGaugeBase: `${G}/17_DanC/Gauge_Base.png`,
+    danFailed: `${G}/17_DanC/Failed.png`,
+    danNumber: `${G}/17_DanC/Number.png`,
+    danSmallNumber: `${G}/17_DanC/Small_Number.png`,
+    danMiniNumber: `${G}/17_DanC/MiniNumber.png`,
+    danExamType: `${G}/17_DanC/ExamType.png`,
+    danExamRange: `${G}/17_DanC/ExamRange.png`,
+    danExamCymbol: `${G}/17_DanC/ExamCymbol.png`,
+    danScreen: `${G}/17_DanC/Screen.png`,
+    danSmallBase: `${G}/17_DanC/SmallBase.png`,
+    danSmallExamCymbol: `${G}/17_DanC/Small_ExamCymbol.png`,
+    gaugeDanBase: `${G}/7_Gauge/1P_Dan_Base.png`,
+    gaugeDan: `${G}/7_Gauge/1P_Dan.png`,
+    gaugeDanClearBase: `${G}/7_Gauge/1P_Dan_Clear_Base.png`,
+    gaugeDanClear: `${G}/7_Gauge/1P_Dan_Clear.png`,
+    taikoDanBackground: `${G}/6_Taiko/Dan_Background.png`,
   },
   sounds: {
     don: 'Sounds/Taiko/dong.ogg',
@@ -213,6 +238,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
   layout: OPENTAIKO_LAYOUT,
   hitEffect: { dir: `${G}/10_Effects/Hit` },
   gaugeRainbow: { dir: `${G}/7_Gauge/Rainbow` },
+  danRainbow: { dir: `${G}/17_DanC/Rainbow`, frameMs: 30 },
   mob: { dir: `${G}/3_Mob` },
   endAnim: { dir: `${G}/9_End` },
 };
@@ -470,6 +496,57 @@ export function applyOpenTaikoIni(
   if (mobY !== undefined) l.mobY = mobY;
   const mobJ = nums(game.Game_Mob_Jump)[0];
   if (mobJ !== undefined) l.mobJump = mobJ;
+  // Dan-i dojo panel (OpenTaiko Game_DanC_*)
+  const dan: Partial<DanLayout> = { ...(l.dan ?? {}) };
+  const xy = (v: number[]): [number, number] | undefined => (v.length >= 2 ? [v[0], v[1]] : undefined);
+  const dx = nums(game.Game_DanC_X);
+  const dy = nums(game.Game_DanC_Y);
+  if (dx.length >= 2 && dy.length >= 2) {
+    dan.gaugeExam = [dx[0], dy[0]];
+    dan.panel = [dx[1], dy[1]];
+  }
+  const pairKeys: [keyof DanLayout, string][] = [
+    ['size', 'Game_DanC_Size'],
+    ['baseOffsetX', 'Game_DanC_Base_Offset_X'],
+    ['baseOffsetY', 'Game_DanC_Base_Offset_Y'],
+    ['smallBaseOffsetX', 'Game_DanC_SmallBase_Offset_X'],
+    ['smallBaseOffsetY', 'Game_DanC_SmallBase_Offset_Y'],
+    ['offset', 'Game_DanC_Offset'],
+    ['numberSize', 'Game_DanC_Number_Size'],
+    ['smallNumberSize', 'Game_DanC_Small_Number_Size'],
+    ['miniNumberSize', 'Game_DanC_MiniNumber_Size'],
+    ['numberOffset', 'Game_DanC_Number_Small_Number_Offset'],
+    ['examTypeSize', 'Game_DanC_ExamType_Size'],
+    ['examRangeSize', 'Game_DanC_ExamRange_Size'],
+    ['examOffset', 'Game_DanC_Exam_Offset'],
+    ['subtitle', 'Game_DanC_SubTitle'],
+    ['plate', 'Game_DanC_Dan_Plate'],
+  ];
+  for (const [field, key] of pairKeys) {
+    const v = xy(nums(game[key]));
+    if (v) (dan as Record<string, unknown>)[field] = v;
+  }
+  const tX = nums(game.Game_DanC_Title_X);
+  const tY = nums(game.Game_DanC_Title_Y);
+  if (tX.length >= 2 && tY.length >= 2) dan.title = [[tX[0], tY[0]], [tX[1], tY[1]]];
+  const numKeys: [keyof DanLayout, string][] = [
+    ['padding', 'Game_DanC_Padding'],
+    ['numberPadding', 'Game_DanC_Number_Padding'],
+    ['numberSmallScale', 'Game_DanC_Number_Small_Scale'],
+    ['numberSmallPadding', 'Game_DanC_Number_Small_Padding'],
+    ['examNumberScale', 'Game_DanC_Exam_Number_Scale'],
+    ['examRangePadding', 'Game_DanC_ExamRange_Padding'],
+    ['titleMaxWidth', 'Game_DanC_Title_MaxWidth'],
+  ];
+  for (const [field, key] of numKeys) {
+    const v = nums(game[key])[0];
+    if (v !== undefined) (dan as Record<string, unknown>)[field] = v;
+  }
+  const tps = pt('Game_DanC_Title_Size');
+  if (tps) dan.titleSize = tps;
+  const sps = pt('Game_DanC_SubTitle_Size');
+  if (sps) dan.subtitleSize = sps;
+  if (Object.keys(dan).length) l.dan = dan;
   const bns = nums(game.Game_Balloon_Balloon_Number_Scale)[0];
   if (bns !== undefined && bns > 0) l.balloonNumberScale = bns;
   // In-game title: Game_MusicName_X/Y is the top-right corner.

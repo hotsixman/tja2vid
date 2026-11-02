@@ -2,6 +2,7 @@ import { lowerBound, stepAt, type Hit, type Judgement, type Playthrough, type Ro
 import type { CharaState, EndSequence, ImageKey, ImageSource, LoadedSkin } from '../skin/types';
 import { endAnimationTime, type EndResult } from '../endResult';
 import type { Note, NoteType } from '../tja/types';
+import { DanOverlay } from './dan';
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -35,6 +36,8 @@ export interface RenderOptions {
   intro?: { start: number; end: number };
   title: string;
   subtitle: string;
+  /** Dan-i dojo: Dan_Plate.png from the song folder (otherwise a plate is generated from the title). */
+  danPlate?: ImageSource;
 }
 
 export interface NameplateInfo {
@@ -103,6 +106,7 @@ const COURSE_KEY: Record<string, ImageKey> = {
   Hard: 'courseHard',
   Oni: 'courseOni',
   Edit: 'courseEdit',
+  Dan: 'courseDan',
 };
 
 const easeOutCubic = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
@@ -174,6 +178,8 @@ export class TaikoRenderer implements FrameRenderer {
   private readonly strips = new Map<string, OffscreenCanvas | null>();
   /** BPM change points with cumulative beat count, for beat-synced animation. */
   private readonly beatPoints: { time: number; bpm: number; beats: number }[];
+  /** Dan-i dojo exam panel / curtain (dan courses only). */
+  private readonly dan: DanOverlay | null;
 
   constructor(
     private readonly skin: LoadedSkin,
@@ -205,6 +211,10 @@ export class TaikoRenderer implements FrameRenderer {
     });
     // Needs beatPoints and clearTime.
     this.charaSegments = this.buildCharaSegments();
+    const GL = skin.manifest.layout;
+    this.dan = play.dan
+      ? new DanOverlay(skin, play.dan, GL.gaugeRect[2] / GL.gaugeCells, GL.gauge[0], opts.title, opts.danPlate)
+      : null;
   }
 
   // ---------------------------------------------------------------- helpers
@@ -342,6 +352,11 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawJudgeCircle(ctx);
     this.drawBars(ctx, t); // bar lines go over the judge circle
     this.drawGogoFire(ctx, t);
+    if (this.dan) {
+      // OpenTaiko actDan.Draw: DanC background, exams and the section curtain, under the notes.
+      this.dan.drawPanel(ctx, t, this.skin.fontFamily);
+      this.dan.drawCurtain(ctx, t, this.skin.manifest.layout.lane, this.width, this.skin.fontFamily);
+    }
     this.drawHitEffect(ctx, t);
     this.drawNotes(ctx, t);
     // The additive explosion burst goes over the notes and the SE text bar
@@ -359,7 +374,7 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawJudgeText(ctx, t);
     this.drawFlyingNotes(ctx, t);
     this.drawEndAnimation(ctx, t);
-    if (this.opts.showTitle) this.drawTitle(ctx);
+    if (this.opts.showTitle) this.drawTitle(ctx, t);
     this.drawGenre(ctx);
   }
 
@@ -984,8 +999,7 @@ export class TaikoRenderer implements FrameRenderer {
   }
 
   /** Data-driven background (manifest.background). */
-  private drawBackgroundLayers(ctx: Ctx2D, t: number): void {
-    const spec = this.skin.manifest.background!;
+  private drawBackgroundLayers(ctx: Ctx2D, t: number, spec = this.skin.manifest.background!): void {
     ctx.fillStyle = spec.color ?? '#000';
     ctx.fillRect(0, 0, this.width, this.height);
     const clearFade = Math.max(0, Math.min(1, (t - this.clearTime) / 300));
@@ -1014,6 +1028,7 @@ export class TaikoRenderer implements FrameRenderer {
       }
       ctx.globalAlpha = 1;
     }
+    if (this.dan) return; // the DanC background covers the stage
     if (this.opts.showDancer !== false) this.drawDancers(ctx, t);
     const footer = this.img('footer');
     if (footer) ctx.drawImage(footer, 0, this.height - footer.height);
@@ -1021,6 +1036,10 @@ export class TaikoRenderer implements FrameRenderer {
   }
 
   private drawBackground(ctx: Ctx2D, t: number): void {
+    if (this.dan && this.skin.manifest.danBackground) {
+      this.drawBackgroundLayers(ctx, t, this.skin.manifest.danBackground);
+      return;
+    }
     if (this.skin.manifest.background) {
       this.drawBackgroundLayers(ctx, t);
       return;
@@ -1047,6 +1066,9 @@ export class TaikoRenderer implements FrameRenderer {
       this.fillPattern(ctx, 'bgUpDangoClear', 0, 0, W, upH, scrollX, 0);
       ctx.globalAlpha = 1;
     }
+
+    // Dan: no lower band, dancers, footer or mob — the DanC background covers it.
+    if (this.dan) return;
 
     // Lower band.
     const y = L.bgDownY;
@@ -1371,8 +1393,14 @@ export class TaikoRenderer implements FrameRenderer {
 
   private drawTaikoPanel(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
-    this.draw(ctx, 'taikoBackground', L.taikoBackground[0], L.taikoBackground[1]);
-    this.drawNameplate(ctx); // under the drum
+    this.draw(
+      ctx,
+      this.dan && this.img('taikoDanBackground') ? 'taikoDanBackground' : 'taikoBackground',
+      L.taikoBackground[0],
+      L.taikoBackground[1],
+    );
+    // Under the drum. In dan mode a plate below the taiko panel would sit on the exam panel.
+    if (!this.dan || this.skin.manifest.layout.nameplate[1] < this.skin.manifest.layout.bgDownY) this.drawNameplate(ctx);
 
     // Drum + per-side flashes.
     const [tx, ty] = L.taiko;
@@ -1592,11 +1620,33 @@ export class TaikoRenderer implements FrameRenderer {
     const filledW = cells * cellW;
     const clearW = clearCell * cellW;
 
-    this.drawRect(ctx, 'gaugeBase', rx, ry, rw, rh, gx, gy);
-    // Skins without a separate Clear.png (TJAPlayer3 style) keep the whole bar in the fill image.
-    const clearKey: ImageKey = this.img('gaugeClear') ? 'gaugeClear' : 'gaugeFill';
-    this.drawRect(ctx, 'gaugeFill', rx, ry, Math.min(filledW, clearW), rh, gx, gy);
-    if (filledW > clearW) this.drawRect(ctx, clearKey, rx + clearW, ry, filledW - clearW, rh, gx + clearW, gy);
+    const danGauge = !!this.dan && !!this.img('gaugeDan');
+    if (danGauge) {
+      // Dan gauge (OpenTaiko Gauge_Dan): no fixed clear zone; the soul gauge exam
+      // value marks where the "clear" colour starts.
+      this.drawRect(ctx, 'gaugeDanBase', rx, ry, rw, rh, gx, gy);
+      const ev = this.dan!.gaugeExamValue(t);
+      const ex = ev !== undefined ? Math.trunc(ev / 2) * cellW : undefined;
+      if (ex !== undefined) this.drawRect(ctx, 'gaugeDanClearBase', ex, 0, rw - ex, rh, gx + ex, gy);
+      this.drawRect(ctx, 'gaugeDan', 0, 0, filledW, rh, gx, gy);
+      if (ex !== undefined && ev !== undefined && value >= ev) {
+        this.drawRect(ctx, 'gaugeDanClear', ex, 0, filledW - ex, rh, gx + ex, gy);
+        // The part below the exam value flashes (ctGaugeFlash, 533ms loop).
+        const f = ((t % 533) + 533) % 533;
+        const a = f <= 365 ? 0 : f <= 448 ? (f - 365) / 83 : f <= 531 ? 1 - (f - 448) / 83 : 0;
+        if (a > 0) {
+          ctx.globalAlpha = a;
+          this.drawRect(ctx, 'gaugeDanClear', 0, 0, ex, rh, gx, gy);
+          ctx.globalAlpha = 1;
+        }
+      }
+    } else {
+      this.drawRect(ctx, 'gaugeBase', rx, ry, rw, rh, gx, gy);
+      // Skins without a separate Clear.png (TJAPlayer3 style) keep the whole bar in the fill image.
+      const clearKey: ImageKey = this.img('gaugeClear') ? 'gaugeClear' : 'gaugeFill';
+      this.drawRect(ctx, 'gaugeFill', rx, ry, Math.min(filledW, clearW), rh, gx, gy);
+      if (filledW > clearW) this.drawRect(ctx, clearKey, rx + clearW, ry, filledW - clearW, rh, gx + clearW, gy);
+    }
 
     // Full gauge: rainbow overlay, each frame crossfading into the next (OpenTaiko 7_Gauge/Rainbow).
     const rb = this.skin.gaugeRainbow;
@@ -1606,17 +1656,21 @@ export class TaikoRenderer implements FrameRenderer {
       const cur = ((Math.floor(pos) % n) + n) % n;
       const next = (cur + 1) % n;
       const a = pos - Math.floor(pos);
+      // Dan: only the lower half (OpenTaiko "smart" rainbow).
+      const half = danGauge ? rh / 2 : 0;
       const f0 = rb.frames[cur];
-      ctx.drawImage(f0, gx, gy, f0.width, f0.height);
+      ctx.drawImage(f0, 0, half, f0.width, f0.height - half, gx, gy + half, f0.width, f0.height - half);
       ctx.globalAlpha = a;
       const f1 = rb.frames[next];
-      ctx.drawImage(f1, gx, gy, f1.width, f1.height);
+      ctx.drawImage(f1, 0, half, f1.width, f1.height - half, gx, gy + half, f1.width, f1.height - half);
       ctx.globalAlpha = 1;
     }
 
     const cleared = value >= this.play.clearThreshold;
-    const [cx, cy, cw, ch] = cleared ? L.gaugeClearTextClearRect : L.gaugeClearTextRect;
-    this.drawRect(ctx, 'gaugeFill', cx, cy, cw, ch, L.gaugeClearText[0], L.gaugeClearText[1]);
+    if (!danGauge) {
+      const [cx, cy, cw, ch] = cleared ? L.gaugeClearTextClearRect : L.gaugeClearTextRect;
+      this.drawRect(ctx, 'gaugeFill', cx, cy, cw, ch, L.gaugeClearText[0], L.gaugeClearText[1]);
+    }
 
     // Soul fire when full.
     if (value >= 100) {
@@ -1747,9 +1801,10 @@ export class TaikoRenderer implements FrameRenderer {
   }
 
   /** In-game song title (no subtitle), right-aligned and vertically centred at layout.title. */
-  private drawTitle(ctx: Ctx2D): void {
+  private drawTitle(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
-    const text = this.opts.title;
+    // Dan: the panel shows the song being played.
+    const text = this.dan ? this.dan.titleAt(t) || this.opts.title : this.opts.title;
     if (!text) return;
     const size = L.titleFontSize;
     ctx.save();

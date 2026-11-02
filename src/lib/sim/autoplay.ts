@@ -1,4 +1,5 @@
 import type { Course, Note } from '../tja/types';
+import { buildDanPlay, type DanPlay } from './dan';
 
 export type Hand = 'L' | 'R' | 'both';
 
@@ -55,6 +56,8 @@ export interface Playthrough {
   totalNotes: number;
   firstTime: number;
   lastTime: number;
+  /** Dan-i dojo exam tracking (dan courses only). */
+  dan?: DanPlay;
 }
 
 const GAUGE_RATIO: Record<string, number> = { Easy: 0.6, Normal: 0.65, Hard: 0.7, Oni: 0.75, Edit: 0.75 };
@@ -103,7 +106,21 @@ export function simulate(course: Course, opts: AutoplayOptions): Playthrough {
   events.sort((a, b) => a.time - b.time);
 
   const totalNotes = judgements.length;
-  const perNote = course.scoreInit ?? Math.ceil(1_000_000 / Math.max(1, totalNotes) / 10) * 10;
+  const shinUchi = (notes: number) => Math.ceil(1_000_000 / Math.max(1, notes) / 10) * 10;
+  // Dan: every song has its own per-note score (SCOREINIT from #NEXTSONG).
+  const danSongs = course.dan?.songs ?? [];
+  const songOf = (t: number) => {
+    let k = 0;
+    for (let i = 0; i < danSongs.length; i++) if (danSongs[i].chipTime <= t) k = i;
+    return k;
+  };
+  const danPerNote = danSongs.map((s, k) => {
+    const end = k + 1 < danSongs.length ? danSongs[k + 1].chipTime : Infinity;
+    const n = judgements.filter((j) => j.time >= s.chipTime && j.time < end).length;
+    return s.scoreInit ?? shinUchi(n);
+  });
+  const perNoteFixed = course.scoreInit ?? shinUchi(totalNotes);
+  const perNoteAt = (t: number) => (danSongs.length ? danPerNote[songOf(t)] : perNoteFixed);
   const gaugeStep = 100 / Math.max(1, totalNotes * (GAUGE_RATIO[course.course] ?? 0.75));
 
   const combo: Step[] = [{ time: -Infinity, value: 0 }];
@@ -115,7 +132,7 @@ export function simulate(course: Course, opts: AutoplayOptions): Playthrough {
   for (const e of events) {
     if (e.kind === 'note') {
       c++;
-      s += perNote;
+      s += perNoteAt(e.time);
       g = Math.min(100, g + gaugeStep);
       combo.push({ time: e.time, value: c });
       gauge.push({ time: e.time, value: g });
@@ -128,7 +145,8 @@ export function simulate(course: Course, opts: AutoplayOptions): Playthrough {
   }
 
   const times = course.notes.map((n) => n.endTime ?? n.time);
-  return {
+  const gaugeExam = course.dan?.songs[0]?.exams.find((e) => e?.type === 'gauge') ?? course.dan?.exams.find((e) => e?.type === 'gauge');
+  const play: Playthrough = {
     course,
     hits,
     judgements,
@@ -136,12 +154,14 @@ export function simulate(course: Course, opts: AutoplayOptions): Playthrough {
     combo,
     score,
     gauge,
-    clearThreshold: CLEAR_THRESHOLD[course.course] ?? 80,
+    clearThreshold: gaugeExam ? Math.min(100, gaugeExam.values[0]) : (CLEAR_THRESHOLD[course.course] ?? 80),
     maxCombo: c,
     totalNotes,
     firstTime: course.notes.length ? course.notes[0].time : 0,
     lastTime: times.length ? Math.max(...times) : 0,
   };
+  if (course.dan) play.dan = buildDanPlay(play, course.dan, danPerNote);
+  return play;
 }
 
 /** Value of a step function at time t (last step with time <= t). */

@@ -11,7 +11,7 @@
   import type { LoadedSkin } from './lib/skin/types';
   import { loadBuiltinSkin } from './lib/skin/builtin';
   import { clearDefaultSkin, loadDefaultSkinZip, saveDefaultSkin } from './lib/skin/storage';
-  import { decodeAudio, mixSoundtrack } from './lib/audio/mix';
+  import { composeDanMusic, decodeAudio, mixSoundtrack } from './lib/audio/mix';
   import { computeTimeline } from './lib/timeline';
   import { END_HOLD_MS, END_RESULTS, endAnimationTime, type EndResult } from './lib/endResult';
   import { exportVideo, isExportSupported, type FrameRate, type QualityName } from './lib/video/export';
@@ -29,8 +29,13 @@
   let tjaBytes = $state<Uint8Array | null>(null);
   let encoding = $state<TjaEncoding>('auto');
   let audioName = $state('');
-  let music = $state<AudioBuffer | null>(null);
+  /** The single song's audio (normal courses). */
+  let singleMusic = $state<AudioBuffer | null>(null);
+  /** Every decoded audio file by lower-case name (dan courses pick theirs from here). */
+  let audioBank = $state<Record<string, AudioBuffer>>({});
   let audioError = $state('');
+  /** Dan-i dojo: Dan_Plate.png dropped with the TJA. */
+  let danPlate = $state<ImageBitmap | undefined>(undefined);
   let pendingAudio: File[] = [];
 
   let courseIndex = $state(0);
@@ -71,7 +76,6 @@
   let introSec = $state(4.3);
   let endResult = $state<EndResult>('dondaFullCombo');
   let endHoldSec = $state(END_HOLD_MS / 1000);
-  const songEndMs = $derived(music ? music.duration * 1000 : null);
 
   // Genre plate under the in-game title (colours remembered in localStorage)
   const GENRE_KEY = 'tja2vid.genre';
@@ -201,6 +205,10 @@
 
   const courseSrc = $derived(parsed?.courses[Math.min(courseIndex, (parsed?.courses.length ?? 1) - 1)] ?? null);
   const course = $derived(parsed && courseSrc ? buildCourse(parsed.meta, courseSrc, branch) : null);
+  // Dan-i dojo: all songs' audio laid out on one timeline.
+  const danMusic = $derived(course?.dan ? composeDanMusic(course.dan.songs, audioBank, SAMPLE_RATE) : null);
+  const music = $derived(course?.dan ? (danMusic?.buffer ?? null) : singleMusic);
+  const songEndMs = $derived(music ? music.duration * 1000 : null);
   const play = $derived(course ? simulate(course, { rollSpeed }) : null);
   const timeline = $derived(
     play
@@ -224,7 +232,10 @@
     maxScoreAdds,
     endResult,
     songEndMs,
-    genre: showGenre ? { text: genreOverride || parsed?.meta.genre || '', background: genreBg, color: genreColor } : undefined,
+    genre: showGenre
+      ? { text: genreOverride || (course?.dan ? '段位道場' : parsed?.meta.genre) || '', background: genreBg, color: genreColor }
+      : undefined,
+    danPlate,
     nameplate: showNameplate
       ? { name: npName }
       : undefined,
@@ -329,21 +340,51 @@
     genreOverride = '';
     // If audio files were dropped together, pick the one named by WAVE:.
     if (pendingAudio.length) {
-      const wave = parsed?.meta.wave.toLowerCase();
-      const match = pendingAudio.find((a) => a.name.toLowerCase() === wave) ?? pendingAudio[0];
-      await loadAudio(match);
+      if (isDanTja()) {
+        audioBank = {};
+        await loadAudioBank(pendingAudio);
+      } else {
+        const wave = parsed?.meta.wave.toLowerCase();
+        const match = pendingAudio.find((a) => a.name.toLowerCase() === wave) ?? pendingAudio[0];
+        await loadAudio(match);
+      }
     }
   }
+
+  /** Whether the loaded TJA has a dan-i dojo course with #NEXTSONG songs. */
+  const isDanTja = () => !!parsed?.courses.some((c) => c.course === 'Dan' && c.body.some((l) => /^#NEXTSONG\b/i.test(l)));
 
   async function loadAudio(f: File) {
     audioName = f.name;
     audioError = '';
     try {
-      music = await withTask('음원 디코딩 중…', async () => decodeAudio(await f.arrayBuffer(), SAMPLE_RATE));
+      singleMusic = await withTask('음원 디코딩 중…', async () => decodeAudio(await f.arrayBuffer(), SAMPLE_RATE));
+      audioBank = { ...audioBank, [f.name.toLowerCase()]: singleMusic };
     } catch (e) {
-      music = null;
+      singleMusic = null;
       audioError = `오디오 디코딩 실패: ${(e as Error).message}`;
     }
+  }
+
+  /** Decodes several audio files (dan songs) into the bank. */
+  async function loadAudioBank(files: File[]) {
+    audioError = '';
+    const task = beginTask({ title: '음원 디코딩 중…' });
+    const bank = { ...audioBank };
+    try {
+      for (const [i, f] of files.entries()) {
+        task.update({ detail: `${f.name} (${i + 1}/${files.length})` });
+        try {
+          bank[f.name.toLowerCase()] = await decodeAudio(await f.arrayBuffer(), SAMPLE_RATE);
+        } catch (e) {
+          audioError = `오디오 디코딩 실패 (${f.name}): ${(e as Error).message}`;
+        }
+      }
+    } finally {
+      task.end();
+    }
+    audioBank = bank;
+    audioName = files.map((f) => f.name).join(', ');
   }
 
   async function handleFiles(list: FileList | File[] | null) {
@@ -351,8 +392,14 @@
     const files = Array.from(list);
     const tja = files.find(isTja);
     pendingAudio = files.filter(isAudio);
+    const plate = files.find((f) => /^dan_plate\.png$/i.test(f.name));
+    if (tja) danPlate = undefined;
+    if (plate) danPlate = await createImageBitmap(plate).catch(() => undefined);
     if (tja) await loadTja(tja);
-    else if (pendingAudio.length) await loadAudio(pendingAudio[0]);
+    else if (pendingAudio.length) {
+      if (course?.dan) await loadAudioBank(pendingAudio);
+      else await loadAudio(pendingAudio[0]);
+    }
     pendingAudio = [];
   }
 
@@ -434,7 +481,15 @@
       ? `노트 ${play.totalNotes}개 · 최대 콤보 ${play.maxCombo} · 길이 ${(timeline.durationMs / 1000).toFixed(1)}초`
       : '',
   );
-  const waveHint = $derived(parsed?.meta.wave && !music ? `TJA가 지정한 음원: ${parsed.meta.wave}` : '');
+  const waveHint = $derived(
+    course?.dan
+      ? danMusic?.missing.length
+        ? `단위 음원이 필요합니다: ${danMusic.missing.join(', ')} (TJA와 함께 선택하거나 끌어다 놓으세요)`
+        : ''
+      : parsed?.meta.wave && !music
+        ? `TJA가 지정한 음원: ${parsed.meta.wave}`
+        : '',
+  );
 </script>
 
 <svelte:window
@@ -463,10 +518,10 @@
         <input
           type="file"
           multiple
-          accept=".tja,audio/*,.ogg,.mp3,.wav,.m4a,.flac,.opus"
+          accept=".tja,audio/*,.ogg,.mp3,.wav,.m4a,.flac,.opus,.png"
           onchange={(e) => handleFiles((e.target as HTMLInputElement).files)}
         />
-        <span>TJA + 음원 파일을 선택하거나 이 창에 끌어다 놓으세요</span>
+        <span>TJA + 음원 파일을 선택하거나 이 창에 끌어다 놓으세요 (단위 도장은 모든 곡의 음원과 Dan_Plate.png도 함께)</span>
       </label>
       <dl class="files">
         <dt>TJA</dt>

@@ -8,7 +8,7 @@ import {
   parseDancerConfig,
   parseIni,
 } from './opentaiko';
-import { CHARA_STATES } from './types';
+import { CHARA_STATES, DAN_IMAGE_KEYS } from './types';
 import type {
   BackgroundSpec,
   CharacterManifest,
@@ -208,6 +208,28 @@ function legacyBackground(res: [number, number]): BackgroundSpec {
   };
 }
 
+/**
+ * TJAPlayer3-style dan-i dojo upper background (5_Background/1): a checkered
+ * base, three cloud layers drifting at different speeds, falling petals and a
+ * sakura branch in the corner.
+ */
+function legacyDanBackground(res: [number, number]): BackgroundSpec {
+  const k = res[0] / 1280;
+  const B = `${G}/5_Background/1`;
+  const h = Math.round(192 * k);
+  return {
+    color: '#1d3566',
+    layers: [
+      { image: `${B}/0.png`, width: res[0], height: h, tileX: true, tileY: true },
+      { image: `${B}/1.png`, width: res[0], tileX: true, scrollX: 8 * k },
+      { image: `${B}/2.png`, width: res[0], tileX: true, scrollX: 16 * k },
+      { image: `${B}/3.png`, width: res[0], tileX: true, scrollX: 26 * k },
+      { image: `${B}/4.png`, x: Math.round(639 * k), bob: [4 * k, 8] },
+      { image: `${B}/5.png` },
+    ],
+  };
+}
+
 /** Detects a dancer set in an OpenTaiko / TJAPlayer3 skin folder. */
 async function detectDancer(
   resolve: SkinFileResolver,
@@ -291,6 +313,8 @@ async function resolveManifest(resolve: SkinFileResolver, base: SkinManifest): P
   if (!(await exists(resolve, manifest.images.bgUpBase!)) && (await exists(resolve, `${G}/5_Background/0/1P_Up_1st.png`))) {
     manifest.background = legacyBackground(resolution);
   }
+  // TJAPlayer3 / Nijiiro: 5_Background/1 is the dan-i dojo upper background.
+  if (await exists(resolve, `${G}/5_Background/1/0.png`)) manifest.danBackground = legacyDanBackground(resolution);
   // tja2vid extension: result frames may be pre-interpolated (e.g. 8.25ms for 120fps).
   const efm = parseFloat(ini.Game_End_FrameMs ?? '');
   const elm = parseFloat(ini.Game_End_LoopFrameMs ?? '');
@@ -450,7 +474,9 @@ export async function loadSkin(
 
   const imageEntries = Object.entries(manifest.images) as [ImageKey, string][];
   const soundEntries = Object.entries(manifest.sounds) as [SoundKey, string][];
-  const layerPaths = [...new Set((manifest.background?.layers ?? []).map((l) => l.image))];
+  const layerPaths = [
+    ...new Set([...(manifest.background?.layers ?? []), ...(manifest.danBackground?.layers ?? [])].map((l) => l.image)),
+  ];
   const total = imageEntries.length + soundEntries.length + layerPaths.length + (manifest.font ? 1 : 0);
   let loaded = 0;
   const tick = () => onProgress?.(++loaded, total);
@@ -500,7 +526,7 @@ export async function loadSkin(
     })(),
   ]);
 
-  const [dancer, character, hitEffect, gaugeRainbow, endAnim, mob] = await Promise.all([
+  const [dancer, character, hitEffect, gaugeRainbow, endAnim, mob, danRainbow] = await Promise.all([
     manifest.dancer ? loadDancer(resolve, manifest.dancer).catch(() => undefined) : undefined,
     manifest.character
       ? loadCharacter(resolve, manifest.character, manifest.resolution).catch(() => undefined)
@@ -517,6 +543,11 @@ export async function loadSkin(
           .then((images) => (images.length ? { images, beat: manifest.mob!.beat ?? 1 } : undefined))
           .catch(() => undefined)
       : undefined,
+    manifest.danRainbow
+      ? loadFrames(resolve, manifest.danRainbow.dir)
+          .then((frames) => (frames.length ? { frames, frameMs: manifest.danRainbow!.frameMs ?? 30 } : undefined))
+          .catch(() => undefined)
+      : undefined,
   ]);
 
   // TJAPlayer3 skins split Judge.png into 60px rows (at 720p) instead of 5 equal rows.
@@ -525,7 +556,7 @@ export async function loadSkin(
     manifest.layout.judgeRows = Math.max(1, Math.round(images.judge.height / rowH));
   }
 
-  return { manifest, images, sounds, fontFamily, dancer, character, hitEffect, gaugeRainbow, endAnim, mob, layerImages };
+  return { manifest, images, sounds, fontFamily, dancer, character, hitEffect, gaugeRainbow, danRainbow, endAnim, mob, layerImages };
 }
 
 /** Loads frames `<dir>/<i>.png`, probing in parallel chunks when the count is unknown. */
@@ -682,5 +713,5 @@ async function loadHitEffect(
 
 /** Lists manifest images that could not be loaded — handy for the UI. */
 export function missingImages(skin: LoadedSkin): ImageKey[] {
-  return (Object.keys(skin.manifest.images) as ImageKey[]).filter((k) => !skin.images[k]);
+  return (Object.keys(skin.manifest.images) as ImageKey[]).filter((k) => !skin.images[k] && !DAN_IMAGE_KEYS.includes(k));
 }

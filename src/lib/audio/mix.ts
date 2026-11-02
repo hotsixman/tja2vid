@@ -84,3 +84,34 @@ export async function mixSoundtrack(
 
   return ctx.startRendering();
 }
+
+/**
+ * Dan-i dojo: places every song's audio at its start time on one timeline.
+ * Files are looked up by name (case-insensitive); missing ones stay silent.
+ */
+export function composeDanMusic(
+  songs: { wave: string; audioStart: number }[],
+  bank: Record<string, AudioBuffer>,
+  sampleRate: number,
+): { buffer: AudioBuffer | null; missing: string[] } {
+  const found = songs.map((s) => bank[s.wave.toLowerCase()] ?? null);
+  const missing = songs.filter((_, i) => !found[i]).map((s) => s.wave);
+  if (found.every((b) => !b)) return { buffer: null, missing };
+  let length = 1;
+  songs.forEach((s, i) => {
+    const b = found[i];
+    if (b) length = Math.max(length, Math.round((s.audioStart / 1000) * sampleRate) + Math.round(b.duration * sampleRate));
+  });
+  const out = new AudioBuffer({ numberOfChannels: 2, length, sampleRate });
+  songs.forEach((s, i) => {
+    const b = found[i];
+    if (!b) return;
+    const at = Math.round((s.audioStart / 1000) * sampleRate);
+    // Buffers are decoded at the output rate, so samples copy straight across.
+    for (let ch = 0; ch < 2; ch++) {
+      const src = b.getChannelData(Math.min(ch, b.numberOfChannels - 1));
+      out.getChannelData(ch).set(src.subarray(0, Math.max(0, Math.min(src.length, length - at))), at);
+    }
+  });
+  return { buffer: out, missing };
+}

@@ -1,6 +1,9 @@
 import type {
   BarLine,
   Branch,
+  DanExam,
+  DanInfo,
+  DanSong,
   Course,
   CourseName,
   CourseSource,
@@ -10,6 +13,7 @@ import type {
   ParsedTja,
   TjaMeta,
 } from './types';
+import { EXAM_TYPES, MAX_EXAMS } from './types';
 
 const COURSE_NAMES: Record<string, CourseName> = {
   '0': 'Easy',
@@ -23,7 +27,58 @@ const COURSE_NAMES: Record<string, CourseName> = {
   '4': 'Edit',
   edit: 'Edit',
   ura: 'Edit',
+  '6': 'Dan',
+  dan: 'Dan',
 };
+
+/**
+ * Gap OpenTaiko inserts at each #NEXTSONG before the next song's audio starts:
+ * msDanNextSongDelay (6200) + the default MusicPreTimeMs (1000).
+ */
+export const DAN_NEXT_SONG_DELAY_MS = 7200;
+
+const EXAM_CODES: Record<string, DanExam['type']> = {
+  g: 'gauge',
+  jp: 'judgePerfect',
+  jg: 'judgeGood',
+  jb: 'judgeBad',
+  s: 'score',
+  r: 'roll',
+  h: 'hit',
+  c: 'combo',
+  a: 'accuracy',
+  ja: 'judgeAdlib',
+  jm: 'judgeMine',
+};
+
+/** Parses `EXAMn` value `type,red,gold,range`; returns null if malformed. */
+export function parseExam(value: string): DanExam | null {
+  const p = value.split(',').map((s) => s.trim());
+  if (p.length < 3) return null;
+  const red = parseInt(p[1], 10);
+  const gold = parseInt(p[2], 10);
+  if (!Number.isFinite(red) || !Number.isFinite(gold)) return null;
+  const type = EXAM_CODES[p[0].toLowerCase()] ?? 'gauge';
+  if (!EXAM_TYPES.includes(type)) return null;
+  return { type, values: [red, gold], range: (p[3] ?? 'm').toLowerCase() === 'l' ? 'less' : 'more' };
+}
+
+/** Splits on commas not escaped as `\,`. */
+function splitEscapedCommas(s: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\\' && s[i + 1] === ',') {
+      cur += ',';
+      i++;
+    } else if (s[i] === ',') {
+      out.push(cur);
+      cur = '';
+    } else cur += s[i];
+  }
+  out.push(cur);
+  return out.map((x) => x.trim());
+}
 
 /** Strips `//` comments and surrounding whitespace. */
 function cleanLine(line: string): string {
@@ -61,7 +116,7 @@ export function parseTja(text: string): ParsedTja {
         const player = startArg ? ` (${startArg})` : '';
         courses.push({
           course,
-          label: `${course === 'Edit' ? 'Ura Oni' : course}${player}`,
+          label: `${course === 'Edit' ? 'Ura Oni' : course === 'Dan' ? '段位道場 (Dan)' : course}${player}`,
           level: num(headers.LEVEL, 0),
           headers,
           body,
@@ -73,6 +128,7 @@ export function parseTja(text: string): ParsedTja {
         delete local.BALLOONNOR;
         delete local.BALLOONEXP;
         delete local.BALLOONMAS;
+        for (const k of Object.keys(local)) if (/^EXAM\d+$/.test(k)) delete local[k];
       } else {
         body.push(line);
       }
@@ -93,7 +149,8 @@ export function parseTja(text: string): ParsedTja {
       if (key === 'COURSE') {
         local = { COURSE: value };
       } else if (
-        ['LEVEL', 'BALLOON', 'BALLOONNOR', 'BALLOONEXP', 'BALLOONMAS', 'SCOREINIT', 'SCOREDIFF', 'STYLE'].includes(key)
+        ['LEVEL', 'BALLOON', 'BALLOONNOR', 'BALLOONEXP', 'BALLOONMAS', 'SCOREINIT', 'SCOREDIFF', 'STYLE'].includes(key) ||
+        /^EXAM\d+$/.test(key)
       ) {
         local[key] = value;
       } else {
@@ -218,6 +275,48 @@ export function buildCourse(meta: TjaMeta, src: CourseSource, branch: Branch = '
   let openLong: Note | null = null;
   let gogoStart: number | null = null;
 
+  // Dan-i dojo: songs (#NEXTSONG) and exams (EXAMn), following OpenTaiko's CTja.
+  const isDan = src.course === 'Dan';
+  const danSongs: DanSong[] = [];
+  const danExams: (DanExam | null)[] = Array(MAX_EXAMS).fill(null);
+  const setExam = (n: number, value: string) => {
+    if (n < 0 || n >= MAX_EXAMS) return;
+    const exam = parseExam(value);
+    if (!exam) return;
+    danExams[n] ??= exam;
+    if (danSongs.length) danSongs[danSongs.length - 1].exams[n] = exam;
+  };
+  if (isDan) {
+    for (const [k, v] of Object.entries(src.headers)) {
+      const m = /^EXAM(\d+)$/.exec(k);
+      if (m) setExam(parseInt(m[1], 10) - 1, v);
+    }
+  }
+  const nextSong = (arg: string) => {
+    const a = splitEscapedCommas(arg);
+    const int = (v: string | undefined) => {
+      const n = parseInt(v ?? '', 10);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const chipTime = st.time + offsetMs;
+    st.time += DAN_NEXT_SONG_DELAY_MS;
+    const scoreInit = int(a[4]);
+    const scoreDiff = int(a[5]);
+    danSongs.push({
+      title: a[0] ?? '',
+      subtitle: (a[1] ?? '').replace(/^(--|\+\+)/, ''),
+      genre: a[2] ?? '',
+      wave: a[3] ?? '',
+      scoreInit: scoreInit && scoreInit > 0 ? scoreInit : undefined,
+      scoreDiff: scoreDiff && scoreDiff > 0 ? scoreDiff : undefined,
+      level: int(a[6]) ?? 10,
+      chipTime,
+      // The audio is not shifted by OFFSET; notes are.
+      audioStart: st.time,
+      exams: Array(MAX_EXAMS).fill(null),
+    });
+  };
+
   // Branch tracking
   let blockIndex = -1;
   let inBlock = false;
@@ -336,11 +435,25 @@ export function buildCourse(meta: TjaMeta, src: CourseSource, branch: Branch = '
   };
 
   for (const line of src.body) {
+    const exam = /^EXAM(\d+)\s*:(.*)$/i.exec(line);
+    if (exam) {
+      if (isDan) setExam(parseInt(exam[1], 10) - 1, exam[2].trim());
+      continue;
+    }
     if (line.startsWith('#')) {
       const m = /^#([A-Z]+)\s*(.*)$/i.exec(line);
       if (!m) continue;
       const cmd = m[1].toUpperCase();
       const arg = m[2].trim();
+
+      if (cmd === 'NEXTSONG') {
+        // Branches never span songs.
+        endBlock();
+        if (measure.some((t) => 'note' in t)) flushMeasure();
+        measure = [];
+        if (isDan) nextSong(arg);
+        continue;
+      }
 
       if (cmd === 'BRANCHSTART') {
         endBlock();
@@ -399,6 +512,15 @@ export function buildCourse(meta: TjaMeta, src: CourseSource, branch: Branch = '
   notes.sort((a, b) => a.time - b.time);
   bars.sort((a, b) => a.time - b.time);
 
+  let dan: DanInfo | undefined;
+  if (isDan && danSongs.length) {
+    // Global exams (not set per song) count for song 0's slots.
+    danExams.forEach((e, i) => {
+      if (e && !danSongs[0].exams[i]) danSongs[0].exams[i] = e;
+    });
+    dan = { songs: danSongs, exams: danExams };
+  }
+
   return {
     course: src.course,
     level: src.level,
@@ -410,5 +532,6 @@ export function buildCourse(meta: TjaMeta, src: CourseSource, branch: Branch = '
     branch,
     scoreInit: src.headers.SCOREINIT ? num(src.headers.SCOREINIT.split(',')[0], 0) || undefined : undefined,
     scoreDiff: src.headers.SCOREDIFF ? num(src.headers.SCOREDIFF, 0) || undefined : undefined,
+    dan,
   };
 }

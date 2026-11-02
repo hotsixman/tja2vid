@@ -44,6 +44,7 @@ export const IMAGE_KEYS = [
   'courseHard',
   'courseOni',
   'courseEdit',
+  'courseDan',
   'gaugeBase',
   'gaugeFill',
   'gaugeClear',
@@ -83,7 +84,37 @@ export const IMAGE_KEYS = [
   'comboBalloon',
   'comboBalloonNumber',
   'genreTemplate',
+  // Dan-i dojo (OpenTaiko 17_DanC, 7_Gauge/1P_Dan*, 6_Taiko/Dan_Background)
+  'danBackground',
+  'danBase',
+  'danBaseSmall',
+  'danGaugeNormal',
+  'danGaugeReach',
+  'danGaugeClear',
+  'danGaugeFlush',
+  'danGaugeLow',
+  'danGaugeBase',
+  'danFailed',
+  'danNumber',
+  'danSmallNumber',
+  'danMiniNumber',
+  'danExamType',
+  'danExamRange',
+  'danExamCymbol',
+  'danScreen',
+  'danSmallBase',
+  'danSmallExamCymbol',
+  'gaugeDanBase',
+  'gaugeDan',
+  'gaugeDanClearBase',
+  'gaugeDanClear',
+  'taikoDanBackground',
 ] as const;
+
+/** Images only used by dan-i dojo courses (not reported as missing). */
+export const DAN_IMAGE_KEYS: readonly ImageKey[] = IMAGE_KEYS.filter(
+  (k) => k.startsWith('dan') || k.startsWith('gaugeDan') || k === 'taikoDanBackground',
+);
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 
 export const SOUND_KEYS = ['don', 'ka', 'balloonPop', 'endClear', 'endFullCombo', 'endDondaFullCombo'] as const;
@@ -170,6 +201,8 @@ export interface SkinLayout {
   mobX?: XY;
   mobY?: number;
   mobJump?: number;
+  /** Dan-i dojo exam panel layout overrides (skin px); unset fields use OpenTaiko's defaults scaled. */
+  dan?: Partial<DanLayout>;
   /** In-game song title: right edge and vertical centre. */
   title: XY;
   /** Titles wider than this are squeezed horizontally (OpenTaiko Game_MusicName_MaxWidth). */
@@ -285,6 +318,8 @@ export interface SkinManifest {
   endAnim?: { dir: string; frameMs?: number; loopFrameMs?: number };
   /** Rainbow gauge frames shown when the gauge is full: `<dir>/0.png …` (OpenTaiko 7_Gauge/Rainbow). */
   gaugeRainbow?: { dir: string; frameMs?: number };
+  /** Rainbow frames for a gold (better success) dan exam bar (OpenTaiko 17_DanC/Rainbow). */
+  danRainbow?: { dir: string; frameMs?: number };
   /**
    * Mob (crowd) shown behind the dancers while the soul gauge is full
    * (TJAPlayer3 3_Mob): `<dir>/0.png, 1.png, …` are alternative crowds.
@@ -296,6 +331,8 @@ export interface SkinManifest {
    * OpenTaiko-style background (the bgUp… and bgDown… images).
    */
   background?: BackgroundSpec;
+  /** Upper background used for dan-i dojo courses (falls back to `background`). */
+  danBackground?: BackgroundSpec;
 }
 
 export interface BackgroundSpec {
@@ -459,6 +496,7 @@ export interface LoadedSkin {
   character?: LoadedCharacter;
   hitEffect?: { great: ImageSource[]; greatBig: ImageSource[]; frameMs: number };
   gaugeRainbow?: { frames: ImageSource[]; frameMs: number };
+  danRainbow?: { frames: ImageSource[]; frameMs: number };
   mob?: { images: ImageSource[]; beat: number };
   endAnim?: LoadedEndAnim;
   /** Images used by background layers, keyed by BackgroundLayer.image. */
@@ -471,3 +509,43 @@ export interface LoadedSkin {
  * auto-detection of dancer folders.
  */
 export type SkinFileResolver = ((path: string) => Promise<Blob | null>) & { list?: () => string[] };
+
+/**
+ * Dan-i dojo exam panel layout (OpenTaiko Game_DanC_* skin values), in skin px.
+ * Defaults are OpenTaiko's 720p values scaled to the skin height.
+ */
+export interface DanLayout {
+  /** Game_DanC_X/Y[0]: soul gauge exam tab (its x is shifted by the exam value). */
+  gaugeExam: XY;
+  /** Game_DanC_X/Y[1]: exam panel origin. */
+  panel: XY;
+  /** Game_DanC_Size: one exam bar (half of Base.png). */
+  size: XY;
+  padding: number;
+  baseOffsetX: XY;
+  baseOffsetY: XY;
+  smallBaseOffsetX: XY;
+  smallBaseOffsetY: XY;
+  /** Exam gauge fill, from the bar's left / lower edge. */
+  offset: XY;
+  numberSize: XY;
+  smallNumberSize: XY;
+  miniNumberSize: XY;
+  numberPadding: number;
+  numberSmallScale: number;
+  numberSmallPadding: number;
+  examNumberScale: number;
+  numberOffset: XY;
+  examTypeSize: XY;
+  examRangeSize: XY;
+  examRangePadding: number;
+  examOffset: XY;
+  /** Song title on the section curtain: [title only, title with subtitle]. */
+  title: [XY, XY];
+  subtitle: XY;
+  titleSize: number;
+  subtitleSize: number;
+  titleMaxWidth: number;
+  /** Dan plate (Dan_Plate.png from the song folder) centre. */
+  plate: XY;
+}
