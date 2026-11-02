@@ -1,3 +1,5 @@
+import { DON_SOUND } from '../audio/assets/don';
+import { KA_SOUND } from '../audio/assets/ka';
 import { unzipSync } from 'fflate';
 import { decodeTja } from '../tja/decode';
 import {
@@ -524,6 +526,10 @@ export async function loadSkin(
     const rowH = 60 * (manifest.resolution[1] / 720);
     manifest.layout.judgeRows = Math.max(1, Math.round(images.judge.height / rowH));
   }
+
+  // Skins without their own drum samples use the default don/ka.
+  sounds.don ??= DON_SOUND;
+  sounds.ka ??= KA_SOUND;
 
   return { manifest, images, sounds, fontFamily, dancer, character, hitEffect, gaugeRainbow, endAnim, mob, layerImages };
 }

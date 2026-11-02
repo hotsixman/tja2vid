@@ -6,6 +6,8 @@
  * It produces the same sprite-sheet formats an OpenTaiko-style skin uses, so
  * the renderer treats it like any other skin.
  */
+import { DON_SOUND } from '../audio/assets/don';
+import { KA_SOUND } from '../audio/assets/ka';
 import type {
   CharaState,
   LoadedCharacter,
@@ -1469,43 +1471,6 @@ function wav(samples: Float32Array, sampleRate: number): ArrayBuffer {
   return buf;
 }
 
-/** Deep drum hit: pitch-dropping sine body plus a short noise attack. */
-function synthDon(sr = 48000): ArrayBuffer {
-  const n = Math.floor(sr * 0.45);
-  const out = new Float32Array(n);
-  let phase = 0;
-  let seed = 1;
-  for (let i = 0; i < n; i++) {
-    const t = i / sr;
-    const f = 70 + 110 * Math.exp(-t * 30);
-    phase += (2 * Math.PI * f) / sr;
-    const body = Math.sin(phase) * Math.exp(-t * 9);
-    seed = (seed * 16807) % 2147483647;
-    const noise = (seed / 2147483647 - 0.5) * Math.exp(-t * 90) * 0.6;
-    out[i] = (body + noise) * 0.9;
-  }
-  return wav(out, sr);
-}
-
-/** Rim click: bright filtered noise burst plus a short high tone. */
-function synthKa(sr = 48000): ArrayBuffer {
-  const n = Math.floor(sr * 0.18);
-  const out = new Float32Array(n);
-  let seed = 5;
-  let hp = 0;
-  let last = 0;
-  for (let i = 0; i < n; i++) {
-    const t = i / sr;
-    seed = (seed * 16807) % 2147483647;
-    const x = seed / 2147483647 - 0.5;
-    hp = 0.85 * (hp + x - last);
-    last = x;
-    const tone = Math.sin(2 * Math.PI * 1650 * t) * 0.5 + Math.sin(2 * Math.PI * 2460 * t) * 0.3;
-    out[i] = (hp * 1.4 + tone) * Math.exp(-t * 38) * 0.8;
-  }
-  return wav(out, sr);
-}
-
 /** Short major arpeggio jingle for the result animations. */
 function synthJingle(notes: number[], sr = 48000): ArrayBuffer {
   const step = 0.11;
@@ -1754,8 +1719,8 @@ export function loadBuiltinSkin(): Promise<LoadedSkin> {
       manifest: BUILTIN_MANIFEST,
       images,
       sounds: {
-        don: synthDon(),
-        ka: synthKa(),
+        don: DON_SOUND,
+        ka: KA_SOUND,
         endClear: synthJingle([72, 76, 79, 84]),
         endFullCombo: synthJingle([72, 76, 79, 84, 88]),
         endDondaFullCombo: synthJingle([72, 76, 79, 84, 88, 91, 96]),
