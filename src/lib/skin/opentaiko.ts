@@ -200,6 +200,7 @@ export const OPENTAIKO_MANIFEST: SkinManifest = {
     comboBalloon: `${G}/11_Balloon/Combo_1P.png`,
     comboBalloonNumber: `${G}/11_Balloon/Number_Combo.png`,
     genreTemplate: `${G}/13_GENRE/Template.png`,
+    genreDanSongs: `${G}/13_GENRE/Songs.png`,
     scoreAdd: `${G}/6_Taiko/Score_1P.png`,
     gogoSplash: `${G}/10_Effects/GoGoSplash.png`,
     danBackground: `${G}/17_DanC/Background.png`,

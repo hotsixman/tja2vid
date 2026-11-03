@@ -310,6 +310,7 @@ export function buildCourse(meta: TjaMeta, src: CourseSource, branch: Branch = '
       scoreInit: scoreInit && scoreInit > 0 ? scoreInit : undefined,
       scoreDiff: scoreDiff && scoreDiff > 0 ? scoreDiff : undefined,
       level: int(a[6]) ?? 10,
+      hidden: (a[8] ?? '').toLowerCase() === 'true',
       chipTime,
       // The audio is not shifted by OFFSET; notes are.
       audioStart: st.time,

@@ -84,6 +84,7 @@ export const IMAGE_KEYS = [
   'comboBalloon',
   'comboBalloonNumber',
   'genreTemplate',
+  'genreDanSongs',
   // Dan-i dojo (OpenTaiko 17_DanC, 7_Gauge/1P_Dan*, 6_Taiko/Dan_Background)
   'danBackground',
   'danBase',
@@ -115,7 +116,7 @@ export const IMAGE_KEYS = [
 
 /** Images only used by dan-i dojo courses (not reported as missing). */
 export const DAN_IMAGE_KEYS: readonly ImageKey[] = IMAGE_KEYS.filter(
-  (k) => k.startsWith('dan') || k.startsWith('gaugeDan') || k === 'taikoDanBackground' || k === 'loadingBackgroundDan',
+  (k) => k.startsWith('dan') || k.startsWith('gaugeDan') || k === 'taikoDanBackground' || k === 'loadingBackgroundDan' || k === 'genreDanSongs',
 );
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 

@@ -74,7 +74,14 @@ const INTRO_TRANSITION_MS = Math.ceil(640 / (CURTAIN_SLIDE_720 + 640 * CURTAIN_S
 /** Arcade loading-screen length the timings below were measured for (ms). */
 const LOADING_REF_MS = 4284;
 /** Dan loading screen: fade to black at its end, then the game fades in. */
-const DAN_LOADING_FADE_MS = 250;
+// Dan loading, timed from Nijiiro arcade footage: fade in from black 450ms,
+// Bg_Dan rises 60px (720p) linearly over the next 2.5s; at song time 0 it
+// fades to black over 470ms, stays black 50ms, then the game fades in over 470ms.
+const DAN_LOADING_IN_MS = 450;
+const DAN_LOADING_RISE_MS = 2500;
+const DAN_LOADING_OUT_MS = 470;
+const DAN_LOADING_BLACK_MS = 50;
+const DAN_GAME_IN_MS = 470;
 /** OpenTaiko's score bounce (13ms per step). */
 const SCORE_SCALE = [1, 1.05, 1.1, 1.11, 1.12, 1.125, 1.12, 1.08, 1.065, 1.03, 1.015, 1];
 
@@ -326,9 +333,14 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.globalCompositeOperation = 'source-over';
 
     const intro = this.opts.intro;
+    if (intro && this.dan && t < intro.end + DAN_LOADING_OUT_MS + DAN_LOADING_BLACK_MS) {
+      // Dan: the loading screen keeps going into song time 0 while fading to black.
+      this.drawDanLoading(ctx, t);
+      ctx.restore();
+      return;
+    }
     if (intro && t < intro.end) {
-      if (this.dan) this.drawDanLoading(ctx, t);
-      else this.drawLoading(ctx, t);
+      this.drawLoading(ctx, t);
       ctx.restore();
       return;
     }
@@ -337,7 +349,7 @@ export class TaikoRenderer implements FrameRenderer {
 
     if (intro && this.dan) {
       // Dan: the game fades in from black (the section curtain is already closed).
-      const a = 1 - (t - intro.end) / DAN_LOADING_FADE_MS;
+      const a = 1 - (t - intro.end - DAN_LOADING_OUT_MS - DAN_LOADING_BLACK_MS) / DAN_GAME_IN_MS;
       if (a > 0) {
         ctx.globalAlpha = Math.min(1, a);
         ctx.fillStyle = '#000';
@@ -387,7 +399,7 @@ export class TaikoRenderer implements FrameRenderer {
     this.drawFlyingNotes(ctx, t);
     this.drawEndAnimation(ctx, t);
     if (this.opts.showTitle) this.drawTitle(ctx, t);
-    this.drawGenre(ctx);
+    this.drawGenre(ctx, t);
   }
 
   // ---------------------------------------------------------------- score rank / combo balloon / genre
@@ -519,8 +531,12 @@ export class TaikoRenderer implements FrameRenderer {
   private genreCache: { key: string; canvas: OffscreenCanvas } | null = null;
 
   /** Genre plate under the title: the skin's 13_GENRE template tinted with the chosen colour, text centred. */
-  private drawGenre(ctx: Ctx2D): void {
+  private drawGenre(ctx: Ctx2D, t: number): void {
     const g = this.opts.genre;
+    if (g && this.dan) {
+      this.drawDanSongPlate(ctx, t);
+      return;
+    }
     if (!g || !g.text) return;
     const L = this.skin.manifest.layout;
     const u = this.height / 720;
@@ -561,6 +577,60 @@ export class TaikoRenderer implements FrameRenderer {
     ctx.strokeText(g.text, 0, 0);
     ctx.fillStyle = g.color;
     ctx.fillText(g.text, 0, 0);
+    ctx.restore();
+  }
+
+  /**
+   * Dan: the plate under the title shows "N曲目 / M曲" (13_GENRE/Songs.png:
+   * white left half with 曲目, light-blue right half with 曲; numbers are drawn
+   * just left of each).
+   */
+  private drawDanSongPlate(ctx: Ctx2D, t: number): void {
+    const L = this.skin.manifest.layout;
+    const u = this.height / 720;
+    const [x, y] = L.genre;
+    const im = this.img('genreDanSongs');
+    const s = (v: number) => (im ? (v * im.width) / 295 : v * u);
+    const h = im ? im.height : 33 * u;
+    if (im) ctx.drawImage(im, x, y);
+    else {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x + 48 * u, y + 3 * u, 195 * u, 27 * u, 13.5 * u);
+      ctx.clip();
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(x, y, 295 * u, h);
+      ctx.fillStyle = '#c6e2f7';
+      ctx.beginPath();
+      ctx.moveTo(x + 162 * u, y);
+      ctx.lineTo(x + 295 * u, y);
+      ctx.lineTo(x + 295 * u, y + h);
+      ctx.lineTo(x + 154 * u, y + h);
+      ctx.fill();
+      ctx.restore();
+    }
+    const size = L.genreFontSize;
+    ctx.save();
+    ctx.font = `${size}px ${this.skin.fontFamily}`;
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = size / 4;
+    ctx.strokeStyle = '#000';
+    ctx.fillStyle = '#fff';
+    const cy = y + h / 2;
+    const draw = (str: string, xx: number, align: CanvasTextAlign) => {
+      ctx.textAlign = align;
+      ctx.strokeText(str, xx, cy);
+      ctx.fillText(str, xx, cy);
+    };
+    const n = this.dan!.songAt(t) + 1;
+    const total = this.dan!.songs.length;
+    draw(String(n), x + s(96), 'right');
+    draw(String(total), x + s(196), 'right');
+    if (!im) {
+      draw('曲目', x + s(99), 'left');
+      draw('曲', x + s(199), 'left');
+    }
     ctx.restore();
   }
 
@@ -765,23 +835,23 @@ export class TaikoRenderer implements FrameRenderer {
   }
 
   /**
-   * Dan-i dojo loading screen (OpenTaiko CStage曲読み込み, dan branch): Bg_Dan
-   * rises 60px (720p) over the first 600ms, the dan plate sits at
-   * SongLoading_DanPlate, and the screen fades in from / out to black.
+   * Dan-i dojo loading screen (OpenTaiko CStage曲読み込み, dan branch, timed
+   * from Nijiiro arcade footage): Bg_Dan with the dan plate at
+   * SongLoading_DanPlate; see the DAN_LOADING_* constants.
    */
   private drawDanLoading(ctx: Ctx2D, t: number): void {
     const intro = this.opts.intro!;
     const e = t - intro.start;
-    const left = intro.end - t;
     const u = this.height / 720;
     const bg = this.img('loadingBackgroundDan');
     if (bg) {
       const scale = this.width / bg.width;
-      ctx.drawImage(bg, 0, -Math.min(60, e / 10) * u, this.width, bg.height * scale);
+      const rise = (60 * Math.min(1, Math.max(0, e - DAN_LOADING_IN_MS) / DAN_LOADING_RISE_MS)) * u;
+      ctx.drawImage(bg, 0, -rise, this.width, bg.height * scale);
     } else this.drawLoadingBackground(ctx, 0, this.width);
     const L = this.dan!.L;
     this.dan!.drawPlate(ctx, L.loadingPlate[0], L.loadingPlate[1], this.skin.fontFamily);
-    const black = Math.max(1 - e / 51, 1 - left / DAN_LOADING_FADE_MS, 0);
+    const black = Math.max(1 - e / DAN_LOADING_IN_MS, (t - intro.end) / DAN_LOADING_OUT_MS, 0);
     if (black > 0) {
       ctx.globalAlpha = Math.min(1, black);
       ctx.fillStyle = '#000';
@@ -1842,7 +1912,8 @@ export class TaikoRenderer implements FrameRenderer {
   private drawTitle(ctx: Ctx2D, t: number): void {
     const L = this.skin.manifest.layout;
     // Dan: the panel shows the song being played.
-    const text = this.dan ? this.dan.titleAt(t) || this.opts.title : this.opts.title;
+    // Dan: the song being played (hidden songs only once their title has been revealed on the curtain).
+    const text = this.dan ? this.dan.titleAt(t) : this.opts.title;
     if (!text) return;
     const size = L.titleFontSize;
     ctx.save();

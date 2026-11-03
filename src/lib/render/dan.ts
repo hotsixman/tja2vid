@@ -573,7 +573,15 @@ export class DanOverlay {
 
   /** Song title for the panel at time t. */
   titleAt(t: number): string {
-    return this.songs[this.songAt(t)]?.title ?? '';
+    const k = this.songAt(t);
+    const song = this.songs[k];
+    if (!song) return '';
+    if (song.hidden) {
+      // Shown from the moment the curtain opens with the title in the middle.
+      const start = this.dan.sections[k].start + (k > 0 ? DAN_CURTAIN_IN_MS : 0) + DAN_CURTAIN_WAIT_MS;
+      if (t < start) return '';
+    }
+    return song.title;
   }
 
   // ------------------------------------------------------------- soul gauge
@@ -767,19 +775,23 @@ export function composeDanPlate(
   }
   const en = english ? danPlateStyle(name).en : '';
   const chars = [...name.replace(/\s+/g, '')];
+  // Measured on a Nijiiro arcade 十段 plate (720p plate units): 84px glyphs,
+  // 93px apart, centred at y=133 above the English name at y=246/269.
   if (chars.length) {
-    const avail = PH - (en ? 150 : 110) * k;
-    // Arcade plates space the characters out a little (step 1.2× the glyph size).
-    const step = 1.2;
-    const size = Math.min(80 * k, avail / (chars.length * step));
-    x.font = `900 ${size}px ${fontFamily}`;
+    const top = 40 * k;
+    const bottom = (en ? 226 : 300) * k;
+    const ratio = 93 / 84;
+    const size = Math.min(84 * k, (bottom - top) / (chars.length * ratio));
+    const step = size * ratio;
+    const centre = (top + bottom) / 2;
+    x.font = `${size}px ${fontFamily}`;
     x.textAlign = 'center';
     x.textBaseline = 'middle';
     x.lineJoin = 'round';
-    const cy0 = PH / 2 - (en ? 45 : 10) * k - (size * step * chars.length) / 2;
+    const cy0 = centre - (step * chars.length) / 2;
     chars.forEach((ch, i) => {
-      const cy = cy0 + size * step * (i + 0.5);
-      x.lineWidth = size * 0.2;
+      const cy = cy0 + step * (i + 0.5);
+      x.lineWidth = size * 0.17;
       x.strokeStyle = '#000';
       x.strokeText(ch, PW / 2, cy);
       x.fillStyle = '#fff';
@@ -788,14 +800,14 @@ export function composeDanPlate(
   }
   if (en) {
     const words = en.split(' ');
-    const es = 22 * k;
-    x.font = `900 ${es}px ${fontFamily}`;
+    const es = 21 * k;
+    x.font = `bold ${es}px "Arial Rounded MT Bold", "Helvetica Neue", Arial, "Noto Sans", sans-serif`;
     x.textAlign = 'center';
     x.textBaseline = 'middle';
-    x.fillStyle = '#111';
+    x.fillStyle = '#1a1a1a';
     words.forEach((w, i) => {
-      const yy = PH - (84 + (words.length - 1 - i) * 26) * k;
-      const mw = PW - 50 * k;
+      const yy = (words.length === 1 ? 258 : 246.5 + i * 23) * k;
+      const mw = PW - 64 * k;
       const tw = x.measureText(w).width;
       x.save();
       x.translate(PW / 2, yy);

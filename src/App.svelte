@@ -222,6 +222,7 @@
     bytes: Uint8Array;
     courseIndex: number;
     branch: Branch;
+    hidden: boolean;
   }
   let builderSongs = $state<BuilderSong[]>([]);
   let builderSeq = 0;
@@ -271,7 +272,7 @@
       .map((s, i) => {
         const p = builderParsed[i];
         const src = p?.courses[Math.min(s.courseIndex, p.courses.length - 1)];
-        return p && src ? { meta: p.meta, source: src, branch: s.branch } : null;
+        return p && src ? { meta: p.meta, source: src, branch: s.branch, hidden: s.hidden } : null;
       })
       .filter((x) => x !== null);
     if (!songs.length) return null;
@@ -321,7 +322,8 @@
           preRollMs: preRollSec * 1000,
           tailMs: 3000,
           endMode,
-          introMs: showIntro ? Math.max(0.5, introSec) * 1000 : 0,
+          // Dan loading screens run 3.75s before the game (Nijiiro arcade).
+          introMs: showIntro ? (course?.dan ? 3750 : Math.max(0.5, introSec) * 1000) : 0,
           // Let the result animation play out and stay on screen.
           minEndMs: endResult === 'none' ? undefined : endAnimationTime(play, songEndMs) + endHoldSec * 1000,
         })
@@ -540,7 +542,7 @@
         } catch {
           /* shown as unreadable in the list */
         }
-        builderSongs.push({ id: ++builderSeq, name: f.name, bytes, courseIndex: courseIdx, branch: 'master' });
+        builderSongs.push({ id: ++builderSeq, name: f.name, bytes, courseIndex: courseIdx, branch: 'master', hidden: false });
       }
       if (pendingAudio.length) await loadAudioBank(pendingAudio);
       pendingAudio = [];
@@ -762,6 +764,7 @@
                       <option value="master">달인</option>
                     </select>
                   {/if}
+                  <label class="check"><input type="checkbox" bind:checked={s.hidden} /> 곡명 숨김</label>
                 </div>
               {:else}
                 <p class="error">채보를 읽지 못했습니다.</p>

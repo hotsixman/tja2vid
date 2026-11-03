@@ -10,6 +10,8 @@ export interface DanBuildSong {
   meta: TjaMeta;
   source: CourseSource;
   branch: Branch;
+  /** Hide the title until the curtain reveals it. */
+  hidden?: boolean;
 }
 
 export interface DanBuildExam {
@@ -56,6 +58,7 @@ export function buildDanCourse(songs: DanBuildSong[], exams: DanBuildExam[], tic
       scoreInit: c.scoreInit,
       scoreDiff: c.scoreDiff,
       level: s.source.level,
+      hidden: !!s.hidden,
       chipTime,
       audioStart,
       exams: Array(MAX_EXAMS).fill(null),

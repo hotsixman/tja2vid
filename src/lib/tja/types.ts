@@ -92,6 +92,8 @@ export interface DanSong {
   genre: string;
   /** Audio file name from #NEXTSONG. */
   wave: string;
+  /** Title hidden (#NEXTSONG 9th field "true"): the panel shows it only once the curtain reveals it. */
+  hidden?: boolean;
   scoreInit?: number;
   scoreDiff?: number;
   level: number;
