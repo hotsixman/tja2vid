@@ -746,6 +746,41 @@ export function drawDanPlatesSheet(k: number): OffscreenCanvas {
   return c;
 }
 
+type Ramp = [number, [number, number, number]][];
+/**
+ * Brightness → colour for the painted plates, measured on a Nijiiro arcade 達人
+ * plate (wood plate brightness 91 / 211 / 232 → edge / body / highlight).
+ */
+const METAL_RAMPS: Record<number, Ramp> = {
+  3: [
+    [0, [0, 0, 0]],
+    [40, [40, 42, 48]],
+    [91, [112, 118, 128]],
+    [211, [200, 206, 215]],
+    [232, [238, 241, 246]],
+    [255, [255, 255, 255]],
+  ],
+  4: [
+    [0, [0, 0, 0]],
+    [40, [60, 40, 0]],
+    [91, [192, 142, 47]],
+    [211, [242, 202, 58]],
+    [232, [250, 243, 173]],
+    [255, [255, 250, 215]],
+  ],
+};
+function rampAt(r: Ramp, l: number): [number, number, number] {
+  for (let i = 1; i < r.length; i++) {
+    if (l <= r[i][0]) {
+      const [l0, c0] = r[i - 1];
+      const [l1, c1] = r[i];
+      const f = (l - l0) / Math.max(1, l1 - l0);
+      return [c0[0] + (c1[0] - c0[0]) * f, c0[1] + (c1[1] - c0[1]) * f, c0[2] + (c1[2] - c0[2]) * f];
+    }
+  }
+  return r[r.length - 1][1];
+}
+
 /**
  * Plate with the dan name written vertically (OpenTaiko tDisplayDanPlate:
  * DanPlates.png column tinted by DANTICKCOLOR, title offset (0, −50)).
@@ -764,7 +799,23 @@ export function composeDanPlate(
   const c = new OffscreenCanvas(PW, PH);
   const x = c.getContext('2d')!;
   const col = Math.max(0, Math.min(5, tick));
-  x.drawImage(sheet, col * PW, 0, PW, PH, 0, 0, PW, PH);
+  const ramp = METAL_RAMPS[col];
+  if (ramp) {
+    // Arcade 玄人/名人/超人/達人 plates are painted wood, not shiny metal:
+    // recolour the wooden plate (column 0) by brightness.
+    x.drawImage(sheet, 0, 0, PW, PH, 0, 0, PW, PH);
+    const d = x.getImageData(0, 0, PW, PH);
+    const p = d.data;
+    for (let i = 0; i < p.length; i += 4) {
+      if (!p[i + 3]) continue;
+      const l = 0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2];
+      const [r, g, b] = rampAt(ramp, l);
+      p[i] = r;
+      p[i + 1] = g;
+      p[i + 2] = b;
+    }
+    x.putImageData(d, 0, 0);
+  } else x.drawImage(sheet, col * PW, 0, PW, PH, 0, 0, PW, PH);
   if (tint && !/^#?f{3}(f{3})?$/i.test(tint)) {
     x.globalCompositeOperation = 'multiply';
     x.fillStyle = tint;
@@ -794,8 +845,11 @@ export function composeDanPlate(
       x.lineWidth = size * 0.17;
       x.strokeStyle = '#000';
       x.strokeText(ch, PW / 2, cy);
-      x.fillStyle = '#fff';
+      // Arcade glyphs have a grey shade on their lower right inside the outline.
+      x.fillStyle = '#8f8f8f';
       x.fillText(ch, PW / 2, cy);
+      x.fillStyle = '#fff';
+      x.fillText(ch, PW / 2 - size * 0.025, cy - size * 0.035);
     });
   }
   if (en) {
@@ -805,6 +859,7 @@ export function composeDanPlate(
     x.textAlign = 'center';
     x.textBaseline = 'middle';
     x.fillStyle = '#1a1a1a';
+    (x as unknown as { letterSpacing: string }).letterSpacing = `${1.2 * k}px`;
     words.forEach((w, i) => {
       const yy = (words.length === 1 ? 258 : 246.5 + i * 23) * k;
       const mw = PW - 64 * k;
