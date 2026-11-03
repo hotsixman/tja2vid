@@ -11,11 +11,20 @@
 }
 body {
   margin: 0;
+  overflow-x: hidden;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 input,
 select,
 button,
 .button {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   font: inherit;
   color: inherit;
   background: #2f2f3a;

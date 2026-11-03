@@ -1053,16 +1053,32 @@
   }
   .layout {
     display: grid;
-    grid-template-columns: minmax(300px, 380px) 1fr;
+    grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
     gap: 1.5rem;
     align-items: start;
   }
   @media (max-width: 900px) {
+    main {
+      padding: 0.75rem;
+    }
     .layout {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.75rem;
+    }
+    .panel {
+      padding: 0.8rem 0.75rem;
+    }
+    .panel.main {
+      position: static;
+    }
+  }
+  @media (max-width: 420px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
   .panel {
+    min-width: 0;
     background: var(--panel);
     border-radius: 12px;
     padding: 1rem 1.25rem;
@@ -1093,7 +1109,7 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 0.6rem;
   }
   .row {
@@ -1143,7 +1159,7 @@
   }
   .exam .row select,
   .dansongs .row select {
-    flex: 1;
+    flex: 1 1 7.5rem;
     min-width: 0;
   }
   .dansongs .row b {
