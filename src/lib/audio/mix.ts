@@ -1,6 +1,7 @@
 import type { Playthrough } from '../sim/autoplay';
 import type { LoadedSkin, SoundKey } from '../skin/types';
 import { endAnimationTime, type EndResult } from '../endResult';
+import { danSongAt } from '../sim/dan';
 
 export interface MixOptions {
   sampleRate: number;
@@ -14,6 +15,8 @@ export interface MixOptions {
   endResult?: EndResult;
   /** End of the song (audio) in song time; the result animation starts then. */
   songEndMs?: number | null;
+  /** Dan-i dojo: per-song hit-sound volume multipliers (by song index). */
+  danHitVolumes?: number[];
 }
 
 /** Decodes an encoded audio file using a throwaway context. */
@@ -54,6 +57,16 @@ export async function mixSoundtrack(
     const hitGain = ctx.createGain();
     hitGain.gain.value = opts.hitVolume;
     hitGain.connect(ctx.destination);
+    // Dan: one extra gain stage per song for its own hit volume.
+    const dan = play.dan;
+    const songGains = dan && opts.danHitVolumes
+      ? dan.sections.map((_, k) => {
+          const g = ctx.createGain();
+          g.gain.value = opts.danHitVolumes![k] ?? 1;
+          g.connect(hitGain);
+          return g;
+        })
+      : null;
     for (const h of play.hits) {
       const buf = h.color === 'don' ? don : ka;
       if (!buf) continue;
@@ -61,7 +74,9 @@ export async function mixSoundtrack(
       if (when < 0 || when * 1000 > opts.durationMs) continue;
       const src = ctx.createBufferSource();
       src.buffer = buf;
-      src.connect(hitGain);
+      const dest = songGains && dan ? songGains[danSongAt(dan, h.time)] : null;
+      if (dest && dest.gain.value <= 0) continue;
+      src.connect(dest ?? hitGain);
       src.start(when);
     }
   }
@@ -105,7 +120,7 @@ export async function mixSoundtrack(
  * Files are looked up by name (case-insensitive); missing ones stay silent.
  */
 export function composeDanMusic(
-  songs: { wave: string; audioStart: number; chipTime?: number }[],
+  songs: { wave: string; audioStart: number; chipTime?: number; volume?: number }[],
   bank: Record<string, AudioBuffer>,
   sampleRate: number,
 ): { buffer: AudioBuffer | null; missing: string[] } {
@@ -123,7 +138,7 @@ export function composeDanMusic(
     const next = songs[i + 1]?.chipTime;
     const fadeAt = next !== undefined ? ms(next) : Infinity;
     const end = Math.min(at + b.length, fadeAt + FADE);
-    return { b, at, end, fadeAt };
+    return { b, at, end, fadeAt, vol: s.volume ?? 1 };
   });
   let length = 1;
   for (const sp of spans) if (sp) length = Math.max(length, sp.end);
@@ -134,14 +149,15 @@ export function composeDanMusic(
       const src = sp.b.getChannelData(Math.min(ch, sp.b.numberOfChannels - 1));
       const dst = out.getChannelData(ch);
       const n = Math.min(sp.end, length) - sp.at;
-      if (sp.end - sp.at === src.length && sp.fadeAt >= sp.end) {
+      if (sp.vol <= 0) continue;
+      if (sp.vol === 1 && sp.end - sp.at === src.length && sp.fadeAt >= sp.end) {
         dst.set(src.subarray(0, n), sp.at);
         continue;
       }
       for (let j = 0; j < n; j++) {
         const t = sp.at + j;
         const g = t < sp.fadeAt ? 1 : Math.max(0, 1 - (t - sp.fadeAt) / FADE);
-        dst[t] += src[j] * g;
+        dst[t] += src[j] * g * sp.vol;
       }
     }
   }

@@ -58,6 +58,14 @@
   let rollSpeed = $state(21);
   let musicVolume = $state(1);
   let hitVolume = $state(0.7);
+  /** Dan: per-song volume multipliers on top of the global ones, keyed by song (wave|title). */
+  let danSongVol = $state<Record<string, { music: number; hit: number }>>({});
+  const danVolKey = (s: { wave: string; title: string }) => `${s.wave.toLowerCase()}|${s.title}`;
+  const danVol = (s: { wave: string; title: string }) => danSongVol[danVolKey(s)] ?? { music: 1, hit: 1 };
+  const setDanVol = (s: { wave: string; title: string }, kind: 'music' | 'hit', v: number) => {
+    danSongVol[danVolKey(s)] = { ...danVol(s), [kind]: v };
+  };
+  const danHitVolumes = (): number[] | undefined => course?.dan?.songs.map((s) => danVol(s).hit);
   let showTitle = $state(true);
   let showDancer = $state(true);
   let mobIndex = $state(0);
@@ -313,7 +321,13 @@
   });
   /** The song audio for mixing (dan: composed now). */
   const musicForMix = (): AudioBuffer | null =>
-    course?.dan ? composeDanMusic(course.dan.songs, audioBank, SAMPLE_RATE).buffer : singleMusic;
+    course?.dan
+      ? composeDanMusic(
+          course.dan.songs.map((s) => ({ ...s, volume: danVol(s).music })),
+          audioBank,
+          SAMPLE_RATE,
+        ).buffer
+      : singleMusic;
   const songEndMs = $derived(course?.dan ? (danMusic?.endMs ?? null) : singleMusic ? singleMusic.duration * 1000 : null);
   const play = $derived(course ? simulate(course, { rollSpeed }) : null);
   const timeline = $derived(
@@ -395,6 +409,7 @@
       timeline.durationMs,
       musicVolume,
       hitVolume,
+      course?.dan ? course.dan.songs.map((s) => danVol(s)) : null,
       endResult,
     ]),
   );
@@ -422,6 +437,7 @@
         durationMs: timeline.durationMs,
         endResult,
         songEndMs,
+        danHitVolumes: danHitVolumes(),
       });
       if (version === mixVersion) {
         soundtrack = buf;
@@ -592,6 +608,7 @@
         durationMs: timeline.durationMs,
         endResult,
         songEndMs,
+        danHitVolumes: danHitVolumes(),
       });
       if (abort.signal.aborted) throw new DOMException('Export cancelled', 'AbortError');
       const r = new TaikoRenderer(skin, play, renderOpts);
@@ -650,6 +667,37 @@
             <p class="hint">
               {dan.songs.map((s, i) => `${i + 1}곡: ${s.title}`).join(' · ')}
             </p>
+            <div class="danvol">
+              <b>곡별 음량 (전체 볼륨에 곱해짐)</b>
+              {#each dan.songs as s, i (i)}
+                {@const v = danVol(s)}
+                <div class="danvol-row">
+                  <span class="danvol-name">{i + 1}곡 {s.title || s.wave}</span>
+                  <label>
+                    음원 {Math.round(v.music * 100)}%
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.05"
+                      value={v.music}
+                      oninput={(e) => setDanVol(s, 'music', +(e.target as HTMLInputElement).value)}
+                    />
+                  </label>
+                  <label>
+                    효과음 {Math.round(v.hit * 100)}%
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.05"
+                      value={v.hit}
+                      oninput={(e) => setDanVol(s, 'hit', +(e.target as HTMLInputElement).value)}
+                    />
+                  </label>
+                </div>
+              {/each}
+            </div>
             <label>
               단위 패
               <select bind:value={danPlateMode}>
@@ -1123,6 +1171,24 @@
     flex-direction: column;
     gap: 0.2rem;
     margin-bottom: 0.5rem;
+  }
+  .danvol {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .danvol-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.25rem 0.75rem;
+  }
+  .danvol-name {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9em;
   }
   .dansongs {
     margin: 0.5rem 0;

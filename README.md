@@ -28,6 +28,7 @@ Svelte 5 + Vite로 만들었고, 모든 처리(채보 해석, 렌더링, 인코�
   - 단위 패는 옵션에서 고릅니다: 자동(TJA `DANTICK`/`DANTICKCOLOR`), 단위 프리셋(五級~十段, 玄人·名人·超人·達人, 外伝 — 스킨의 `DanPlates.png`에서 그 단위 색 패를 골라 이름을 씁니다), 패 색만 고르기, 패 글자, 색, 영문 이름(예: TENTH DAN), 이미지(`Dan_Plate.png`), 표시 안 함
   - **단위 만들기**: 단위 TJA 없이 곡별 TJA와 음원을 넣고(넣은 순서 = 곡 순서, 곡마다 난이도·분기 선택), 조건(魂ゲージ·良·可·不可·スコア·連打·叩けた数·コンボ·精度, 以上/未満, 전체 또는 곡별 값)을 정하면 `#NEXTSONG`으로 이은 것과 같은 단위를 만듭니다. 곡 사이에서 이전 곡 음원이 남아 있으면 다음 막이 시작될 때 1초 동안 줄여 끕니다
   - 곡마다 막 효과음(`Sounds/Dan/Section_First`, `Section`)
+  - 곡별 음량: 단위 옵션에서 곡마다 음원·효과음(타격음) 음량을 0~200%로 정합니다. 전체 음악/타격음 볼륨에 곱해집니다
   - Nijiiro / TJAPlayer3 스킨의 `17_DanC`, `7_Gauge/1P_Dan*`, `6_Taiko/Dan_Background.png`, `5_Background/1`(단위 위 배경), `3_DaniSelect/DanPlates.png`, `4_SongLoading/Bg_Dan.png`를 씁니다. 기본 스킨에도 단위용 그래픽이 들어 있습니다
 
 ## 시작하기
