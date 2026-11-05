@@ -411,6 +411,8 @@ export class TaikoRenderer implements FrameRenderer {
    * and fades out (255ms). Later ranks draw over earlier ones.
    */
   private drawScoreRank(ctx: Ctx2D, t: number): void {
+    // Dan-i dojo has no score rank badges.
+    if (this.play.dan) return;
     const im = this.img('scoreRank');
     if (!im) return;
     const L = this.skin.manifest.layout;
