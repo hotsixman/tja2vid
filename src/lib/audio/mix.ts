@@ -19,6 +19,45 @@ export interface MixOptions {
   danHitVolumes?: number[];
 }
 
+/**
+ * Loudness reference: PeepoDrumKit-web (hotsixman/PeepoDrumKit-web). There the
+ * song and the hit sounds both go through a 0.75 master gain, the song at
+ * SONGVOL and its don.wav / ka.wav at SEVOL. To get the same balance at
+ * 100% / 100% with any skin's sounds, each hit sound is scaled to the loudness
+ * of those files (loudest 50ms RMS, measured from them).
+ */
+export const MASTER_GAIN = 0.75;
+const HIT_REFERENCE_RMS = { don: 0.179, ka: 0.16 } as const;
+
+/** Loudest 50ms RMS of a buffer (channels averaged). */
+export function peakWindowRms(buf: AudioBuffer): number {
+  const n = buf.length;
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
+  const w = Math.max(1, Math.round(buf.sampleRate * 0.05));
+  const hop = Math.max(1, w >> 2);
+  let best = 0;
+  for (let i = 0; i + w <= n || i === 0; i += hop) {
+    let sum = 0;
+    const end = Math.min(n, i + w);
+    for (let j = i; j < end; j++) {
+      let v = 0;
+      for (const ch of chans) v += ch[j];
+      v /= chans.length;
+      sum += v * v;
+    }
+    best = Math.max(best, Math.sqrt(sum / Math.max(1, end - i)));
+    if (end >= n) break;
+  }
+  return best;
+}
+
+/** Gain that brings a hit sound to the PeepoDrumKit reference loudness. */
+function hitNormalize(buf: AudioBuffer | null, color: 'don' | 'ka'): number {
+  if (!buf) return 1;
+  const rms = peakWindowRms(buf);
+  return rms > 1e-4 ? Math.min(4, Math.max(0.1, HIT_REFERENCE_RMS[color] / rms)) : 1;
+}
+
 /** Decodes an encoded audio file using a throwaway context. */
 export async function decodeAudio(data: ArrayBuffer, sampleRate = 48000): Promise<AudioBuffer> {
   const ctx = new OfflineAudioContext(2, 1, sampleRate);
@@ -37,13 +76,16 @@ export async function mixSoundtrack(
 ): Promise<AudioBuffer> {
   const length = Math.max(1, Math.ceil((opts.durationMs / 1000) * opts.sampleRate));
   const ctx = new OfflineAudioContext(2, length, opts.sampleRate);
+  const master = ctx.createGain();
+  master.gain.value = MASTER_GAIN;
+  master.connect(ctx.destination);
 
   if (music) {
     const src = ctx.createBufferSource();
     src.buffer = music;
     const gain = ctx.createGain();
     gain.gain.value = opts.musicVolume;
-    src.connect(gain).connect(ctx.destination);
+    src.connect(gain).connect(master);
     // A negative lead-in means the output starts part-way into the song.
     const at = opts.leadInMs / 1000;
     if (at >= 0) src.start(at);
@@ -52,11 +94,12 @@ export async function mixSoundtrack(
 
   const decode = async (buf?: ArrayBuffer) => (buf ? ctx.decodeAudioData(buf.slice(0)).catch(() => null) : null);
   const [don, ka] = await Promise.all([decode(skin.sounds.don), decode(skin.sounds.ka)]);
+  const norm = { don: hitNormalize(don, 'don'), ka: hitNormalize(ka, 'ka') };
 
   if (opts.hitVolume > 0) {
     const hitGain = ctx.createGain();
     hitGain.gain.value = opts.hitVolume;
-    hitGain.connect(ctx.destination);
+    hitGain.connect(master);
     // Dan: one extra gain stage per song for its own hit volume.
     const dan = play.dan;
     const songGains = dan && opts.danHitVolumes
@@ -81,7 +124,7 @@ export async function mixSoundtrack(
       const prev = last[h.color];
       if (prev && prev.at + buf.duration > when) {
         const from = Math.max(prev.at, when - CUT_FADE);
-        prev.gain.gain.setValueAtTime(1, from);
+        prev.gain.gain.setValueAtTime(norm[h.color], from);
         prev.gain.gain.linearRampToValueAtTime(0, when);
         prev.src.stop(when);
       }
@@ -94,6 +137,7 @@ export async function mixSoundtrack(
       const src = ctx.createBufferSource();
       src.buffer = buf;
       const voice = ctx.createGain();
+      voice.gain.value = norm[h.color];
       src.connect(voice).connect(dest ?? hitGain);
       src.start(when);
       last[h.color] = { src, gain: voice, at: when };
@@ -112,7 +156,7 @@ export async function mixSoundtrack(
   if (jingle && when >= 0 && when * 1000 < opts.durationMs) {
     const src = ctx.createBufferSource();
     src.buffer = jingle;
-    src.connect(ctx.destination);
+    src.connect(master);
     src.start(when);
   }
 
@@ -126,7 +170,7 @@ export async function mixSoundtrack(
       if (!buf || at < 0 || at * 1000 >= opts.durationMs) return;
       const src = ctx.createBufferSource();
       src.buffer = buf;
-      src.connect(ctx.destination);
+      src.connect(master);
       src.start(at);
     });
   }
