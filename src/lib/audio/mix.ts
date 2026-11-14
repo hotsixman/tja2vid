@@ -77,13 +77,13 @@ export function loudRms(buf: AudioBuffer): number {
 }
 
 /** Auto balance targets (after the master gain): loud parts of the song at this RMS… */
-export const AUTO_MUSIC_TARGET = 0.17;
+export const AUTO_MUSIC_TARGET = 0.22;
 /**
  * …and a don hit (loudest 50ms) at this fraction of it: the balance of
- * music 100% / hits 100% on typical songs (0.65–0.85 on the ReiDan songs),
- * which sounded right compared with a reference play video.
+ * music 100% / hits 100% on typical songs (0.65–0.85 on the ReiDan songs)
+ * sounded right next to a reference play video, then hits a little quieter.
  */
-export const AUTO_HIT_RATIO = 0.8;
+export const AUTO_HIT_RATIO = 0.65;
 
 /** Music volume that brings a song's loud parts to the auto target (null if silent). */
 export function autoMusicVolume(buf: AudioBuffer): number | null {
@@ -233,7 +233,63 @@ export async function mixSoundtrack(
     });
   }
 
-  return ctx.startRendering();
+  const rendered = await ctx.startRendering();
+  limitPeaks(rendered);
+  return rendered;
+}
+
+/**
+ * Look-ahead peak limiter applied to the finished mix, so volumes above 100%
+ * (or many sounds at once) never hard-clip: the gain dips smoothly (5ms
+ * look-ahead) just enough to keep every sample under LIMIT_CEILING, and
+ * recovers over ~80ms. Parts already under the ceiling are untouched.
+ */
+export const LIMIT_CEILING = 0.98;
+export function limitPeaks(buf: AudioBuffer, ceiling = LIMIT_CEILING): void {
+  const n = buf.length;
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
+  // Required gain per sample.
+  const req = new Float32Array(n);
+  let any = false;
+  for (let i = 0; i < n; i++) {
+    let pk = 0;
+    for (const ch of chans) {
+      const v = ch[i] < 0 ? -ch[i] : ch[i];
+      if (v > pk) pk = v;
+    }
+    req[i] = pk > ceiling ? ceiling / pk : 1;
+    if (pk > ceiling) any = true;
+  }
+  if (!any) return;
+  const L = Math.max(1, Math.round(buf.sampleRate * 0.005));
+  // Centered sliding minimum (radius L), then centered average (radius L/2):
+  // every averaged value is <= req at the centre, so peaks stay under the ceiling.
+  const a = new Float32Array(n);
+  const dq = new Int32Array(n);
+  let head = 0, tail = 0, next = 0;
+  for (let i = 0; i < n; i++) {
+    const hi = Math.min(n - 1, i + L);
+    while (next <= hi) {
+      while (tail > head && req[dq[tail - 1]] >= req[next]) tail--;
+      dq[tail++] = next++;
+    }
+    while (dq[head] < i - L) head++;
+    a[i] = req[dq[head]];
+  }
+  const h = Math.max(1, L >> 1);
+  const rel = 1 - Math.exp(-1 / (buf.sampleRate * 0.08));
+  let sum = 0;
+  for (let k = 0; k <= Math.min(n - 1, h); k++) sum += a[k];
+  let g = 1;
+  for (let i = 0; i < n; i++) {
+    const lo = i - h, hi = i + h;
+    const cnt = Math.min(n - 1, hi) - Math.max(0, lo) + 1;
+    const b = sum / cnt;
+    g = Math.min(b, g + (1 - g) * rel);
+    if (g < 1) for (const ch of chans) ch[i] *= g;
+    if (hi + 1 < n) sum += a[hi + 1];
+    if (lo >= 0) sum -= a[lo];
+  }
 }
 
 /**

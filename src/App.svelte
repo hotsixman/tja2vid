@@ -13,7 +13,7 @@
   import type { LoadedSkin } from './lib/skin/types';
   import { loadBuiltinSkin } from './lib/skin/builtin';
   import { clearDefaultSkin, loadDefaultSkinZip, saveDefaultSkin } from './lib/skin/storage';
-  import { autoHitVolume, autoMusicVolume, composeDanMusic, decodeAudio, mixSoundtrack, peakLevel } from './lib/audio/mix';
+  import { autoHitVolume, autoMusicVolume, composeDanMusic, decodeAudio, mixSoundtrack } from './lib/audio/mix';
   import { computeTimeline } from './lib/timeline';
   import { END_HOLD_MS, END_RESULTS, endAnimationTime, type EndResult } from './lib/endResult';
   import { exportVideo, isExportSupported, type FrameRate, type QualityName } from './lib/video/export';
@@ -453,8 +453,8 @@
 
   /**
    * "음량 자동 맞춤" (button only): sets the music volume from the song's
-   * loudness (dan: each song's own music volume), the hit volume to a fixed
-   * share of it, then mixes and scales both down if the result would clip.
+   * loudness (dan: each song's own music volume) and the hit volume to a fixed
+   * share of it, then mixes (the mix's limiter keeps peaks from clipping).
    */
   let balancing = $state(false);
   async function autoBalance() {
@@ -476,30 +476,6 @@
         if (v !== null) musicVolume = clampVol(v);
       }
       hitVolume = clampVol(hit);
-      // Check the real mix for clipping and back both volumes off if needed.
-      task.update({ detail: '클리핑이 없는지 확인하고 있습니다.' });
-      const key = mixKey;
-      const buf = await mixSoundtrack(musicForMix(), skin, play, {
-        sampleRate: SAMPLE_RATE,
-        musicVolume,
-        hitVolume,
-        leadInMs: timeline.leadInMs,
-        durationMs: timeline.durationMs,
-        endResult,
-        songEndMs,
-        danHitVolumes: danHitVolumes(),
-      });
-      const pk = peakLevel(buf);
-      const LIMIT = 0.95;
-      if (pk > LIMIT) {
-        const k = LIMIT / pk;
-        musicVolume = Math.floor(musicVolume * k * 100) / 100;
-        hitVolume = Math.floor(hitVolume * k * 100) / 100;
-      } else {
-        ++mixVersion;
-        soundtrack = buf;
-        mixedKey = key;
-      }
     } catch (e) {
       console.error(e);
     } finally {
