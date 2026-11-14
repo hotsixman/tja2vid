@@ -122,6 +122,9 @@ export interface TjaMeta {
   bpm: number;
   demoStart: number;
   genre: string;
+  /** SONGVOL / SEVOL in percent (100 = unchanged); undefined when not given. */
+  songVol?: number;
+  seVol?: number;
 }
 
 export interface CourseSource {

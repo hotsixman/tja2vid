@@ -86,6 +86,13 @@ function cleanLine(line: string): string {
   return (i >= 0 ? line.slice(0, i) : line).trim();
 }
 
+/** A volume header (percent), or undefined when absent/invalid. */
+function vol(v: string | undefined): number | undefined {
+  if (v === undefined || v.trim() === '') return undefined;
+  const n = Number(v.trim());
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 function num(v: string | undefined, fallback: number): number {
   if (v === undefined) return fallback;
   const n = parseFloat(v);
@@ -167,6 +174,8 @@ export function parseTja(text: string): ParsedTja {
     bpm: num(globals.BPM, 120),
     demoStart: num(globals.DEMOSTART, 0),
     genre: globals.GENRE ?? '',
+    songVol: vol(globals.SONGVOL),
+    seVol: vol(globals.SEVOL),
   };
   return { meta, courses };
 }

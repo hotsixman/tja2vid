@@ -57,7 +57,7 @@
   let quality = $state<QualityName>('high');
   let rollSpeed = $state(21);
   let musicVolume = $state(1);
-  let hitVolume = $state(0.7);
+  let hitVolume = $state(1);
   /** Dan: per-song volume multipliers on top of the global ones, keyed by song (wave|title). */
   let danSongVol = $state<Record<string, { music: number; hit: number }>>({});
   const danVolKey = (s: { wave: string; title: string }) => `${s.wave.toLowerCase()}|${s.title}`;
@@ -470,12 +470,18 @@
   });
 
   // ---------------------------------------------------------------- files
+  const MAX_VOL = 2;
+  const clampVol = (v: number) => Math.min(MAX_VOL, Math.max(0, Math.round(v * 100) / 100));
   const isTja = (f: File) => /\.tja$/i.test(f.name);
   const isAudio = (f: File) => f.type.startsWith('audio/') || /\.(ogg|mp3|wav|m4a|aac|flac|opus|webm)$/i.test(f.name);
 
   async function loadTja(f: File) {
     tjaName = f.name;
     tjaBytes = new Uint8Array(await f.arrayBuffer());
+    // SONGVOL / SEVOL in the TJA set the volumes when given.
+    const m = parsedFile?.meta;
+    if (m?.songVol !== undefined) musicVolume = clampVol(m.songVol / 100);
+    if (m?.seVol !== undefined) hitVolume = clampVol(m.seVol / 100);
     titleOverride = '';
     subtitleOverride = '';
     genreOverride = '';
@@ -555,6 +561,14 @@
           const p = parseTja(decodeTja(bytes, encoding));
           const oni = p.courses.findIndex((c) => c.course === 'Oni' && !c.label.includes('P2'));
           courseIdx = oni >= 0 ? oni : 0;
+          // The song's own SONGVOL / SEVOL become its per-song dan volumes.
+          if (p.meta.songVol !== undefined || p.meta.seVol !== undefined) {
+            const cur = danVol(p.meta);
+            danSongVol[danVolKey(p.meta)] = {
+              music: p.meta.songVol !== undefined ? clampVol(p.meta.songVol / 100) : cur.music,
+              hit: p.meta.seVol !== undefined ? clampVol(p.meta.seVol / 100) : cur.hit,
+            };
+          }
         } catch {
           /* shown as unreadable in the list */
         }
@@ -937,11 +951,11 @@
         </label>
         <label>
           음악 볼륨 {Math.round(musicVolume * 100)}%
-          <input type="range" min="0" max="1.5" step="0.05" bind:value={musicVolume} />
+          <input type="range" min="0" max={MAX_VOL} step="0.01" bind:value={musicVolume} />
         </label>
         <label>
           타격음 볼륨 {Math.round(hitVolume * 100)}%
-          <input type="range" min="0" max="1.5" step="0.05" bind:value={hitVolume} />
+          <input type="range" min="0" max={MAX_VOL} step="0.01" bind:value={hitVolume} />
         </label>
         <label>
           판정 표시 최대 개수

@@ -221,3 +221,16 @@ describe('dan builder', () => {
     expect(dan.songs[1].exams[1]?.values).toEqual([30, 40]);
   });
 });
+
+describe('SONGVOL / SEVOL', () => {
+  it('reads the volume headers in percent', () => {
+    const p = parseTja(SAMPLE.replace('WAVE:test.ogg', 'WAVE:test.ogg\nSONGVOL:80\nSEVOL:120'));
+    expect(p.meta.songVol).toBe(80);
+    expect(p.meta.seVol).toBe(120);
+  });
+  it('leaves them undefined when absent', () => {
+    const p = parseTja(SAMPLE);
+    expect(p.meta.songVol).toBeUndefined();
+    expect(p.meta.seVol).toBeUndefined();
+  });
+});
