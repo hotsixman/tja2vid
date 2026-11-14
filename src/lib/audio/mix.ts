@@ -27,7 +27,8 @@ export interface MixOptions {
  * of those files (loudest 50ms RMS, measured from them).
  */
 export const MASTER_GAIN = 0.75;
-const HIT_REFERENCE_RMS = { don: 0.179, ka: 0.16 } as const;
+// don.wav / ka.wav are mono; measured as decoded (no stereo up-mix attenuation).
+const HIT_REFERENCE_RMS = { don: 0.253, ka: 0.226 } as const;
 
 /** Loudest 50ms RMS of a buffer (channels averaged). */
 export function peakWindowRms(buf: AudioBuffer): number {
@@ -77,8 +78,11 @@ export function loudRms(buf: AudioBuffer): number {
 
 /** Auto balance targets (after the master gain): loud parts of the song at this RMS… */
 export const AUTO_MUSIC_TARGET = 0.17;
-/** …and a don hit (loudest 50ms) at this fraction of it. */
-export const AUTO_HIT_RATIO = 0.75;
+/**
+ * …and a don hit (loudest 50ms) about as loud as that. Measured from a
+ * reference play video: don hits ≈ 0.19 vs music (+ka) loud parts ≈ 0.20.
+ */
+export const AUTO_HIT_RATIO = 1.0;
 
 /** Music volume that brings a song's loud parts to the auto target (null if silent). */
 export function autoMusicVolume(buf: AudioBuffer): number | null {
