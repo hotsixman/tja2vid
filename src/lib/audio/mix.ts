@@ -67,17 +67,36 @@ export async function mixSoundtrack(
           return g;
         })
       : null;
-    for (const h of play.hits) {
+    // Like OpenTaiko (one CSound per drum, PlayStart rewinds it), a new hit of
+    // the same colour cuts the previous one, so dense streams don't stack up
+    // and clip. The cut is a few-ms fade to avoid a click.
+    const CUT_FADE = 0.004;
+    const last: Record<'don' | 'ka', { src: AudioBufferSourceNode; gain: GainNode; at: number } | null> = { don: null, ka: null };
+    const hits = [...play.hits].sort((a, b) => a.time - b.time);
+    for (const h of hits) {
       const buf = h.color === 'don' ? don : ka;
       if (!buf) continue;
       const when = (h.time + opts.leadInMs) / 1000;
       if (when < 0 || when * 1000 > opts.durationMs) continue;
+      const prev = last[h.color];
+      if (prev && prev.at + buf.duration > when) {
+        const from = Math.max(prev.at, when - CUT_FADE);
+        prev.gain.gain.setValueAtTime(1, from);
+        prev.gain.gain.linearRampToValueAtTime(0, when);
+        prev.src.stop(when);
+      }
+      const dest = songGains && dan ? songGains[danSongAt(dan, h.time)] : null;
+      if (dest && dest.gain.value <= 0) {
+        // Silent song: still cuts the previous voice, plays nothing.
+        last[h.color] = null;
+        continue;
+      }
       const src = ctx.createBufferSource();
       src.buffer = buf;
-      const dest = songGains && dan ? songGains[danSongAt(dan, h.time)] : null;
-      if (dest && dest.gain.value <= 0) continue;
-      src.connect(dest ?? hitGain);
+      const voice = ctx.createGain();
+      src.connect(voice).connect(dest ?? hitGain);
       src.start(when);
+      last[h.color] = { src, gain: voice, at: when };
     }
   }
 
