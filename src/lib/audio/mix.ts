@@ -77,7 +77,7 @@ export function loudRms(buf: AudioBuffer): number {
 }
 
 /** Auto balance targets (after the master gain): loud parts of the song at this RMS… */
-export const AUTO_MUSIC_TARGET = 0.22;
+export const AUTO_MUSIC_TARGET = 0.26;
 /**
  * …and a don hit (loudest 50ms) at this fraction of it: the balance of
  * music 100% / hits 100% on typical songs (0.65–0.85 on the ReiDan songs)
