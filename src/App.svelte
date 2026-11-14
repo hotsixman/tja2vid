@@ -13,7 +13,7 @@
   import type { LoadedSkin } from './lib/skin/types';
   import { loadBuiltinSkin } from './lib/skin/builtin';
   import { clearDefaultSkin, loadDefaultSkinZip, saveDefaultSkin } from './lib/skin/storage';
-  import { composeDanMusic, decodeAudio, mixSoundtrack } from './lib/audio/mix';
+  import { autoHitVolume, autoMusicVolume, composeDanMusic, decodeAudio, mixSoundtrack, peakLevel } from './lib/audio/mix';
   import { computeTimeline } from './lib/timeline';
   import { END_HOLD_MS, END_RESULTS, endAnimationTime, type EndResult } from './lib/endResult';
   import { exportVideo, isExportSupported, type FrameRate, type QualityName } from './lib/video/export';
@@ -449,6 +449,64 @@
       task.end();
       if (version === mixVersion) mixing = false;
     }
+  }
+
+  /**
+   * "음량 자동 맞춤" (button only): sets the music volume from the song's
+   * loudness (dan: each song's own music volume), the hit volume to a fixed
+   * share of it, then mixes and scales both down if the result would clip.
+   */
+  let balancing = $state(false);
+  async function autoBalance() {
+    if (!play || !skin || balancing) return;
+    balancing = true;
+    const task = beginTask({ title: '음량 자동 맞춤 중…', detail: '음원 크기를 분석하고 있습니다.' });
+    try {
+      await new Promise((r) => setTimeout(r, 30));
+      const hit = autoHitVolume();
+      if (course?.dan) {
+        for (const s of course.dan.songs) {
+          const b = audioBank[s.wave.toLowerCase()];
+          const v = b ? autoMusicVolume(b) : null;
+          danSongVol[danVolKey(s)] = { music: v === null ? 1 : clampVol(v), hit: 1 };
+        }
+        musicVolume = 1;
+      } else {
+        const v = singleMusic ? autoMusicVolume(singleMusic) : null;
+        if (v !== null) musicVolume = clampVol(v);
+      }
+      hitVolume = clampVol(hit);
+      // Check the real mix for clipping and back both volumes off if needed.
+      task.update({ detail: '클리핑이 없는지 확인하고 있습니다.' });
+      const key = mixKey;
+      const buf = await mixSoundtrack(musicForMix(), skin, play, {
+        sampleRate: SAMPLE_RATE,
+        musicVolume,
+        hitVolume,
+        leadInMs: timeline.leadInMs,
+        durationMs: timeline.durationMs,
+        endResult,
+        songEndMs,
+        danHitVolumes: danHitVolumes(),
+      });
+      const pk = peakLevel(buf);
+      const LIMIT = 0.95;
+      if (pk > LIMIT) {
+        const k = LIMIT / pk;
+        musicVolume = Math.floor(musicVolume * k * 100) / 100;
+        hitVolume = Math.floor(hitVolume * k * 100) / 100;
+      } else {
+        ++mixVersion;
+        soundtrack = buf;
+        mixedKey = key;
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      task.end();
+      balancing = false;
+    }
+    if (mixedKey !== mixKey) await remix();
   }
 
   // Auto-mix when the song (TJA), the audio file or the skin changes.
@@ -949,6 +1007,12 @@
           연타 속도 (타/초)
           <input type="number" min="1" max="60" step="1" bind:value={rollSpeed} />
         </label>
+        <button
+          type="button"
+          onclick={autoBalance}
+          disabled={!play || !skin || balancing || mixing}
+          title="음원 크기를 분석해서 음악·타격음 볼륨을 맞추고, 소리가 깨지지 않게 합칩니다 (누를 때만 동작)"
+        >🎚 음량 자동 맞춤</button>
         <label>
           음악 볼륨 {Math.round(musicVolume * 100)}%
           <input type="range" min="0" max={MAX_VOL} step="0.01" bind:value={musicVolume} />

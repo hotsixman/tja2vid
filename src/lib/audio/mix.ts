@@ -51,6 +51,59 @@ export function peakWindowRms(buf: AudioBuffer): number {
   return best;
 }
 
+/**
+ * "음량 자동 맞춤": loudness of the busy parts of a song — the 90th percentile
+ * of 400ms-window RMS (channels averaged), so quiet intros don't count.
+ */
+export function loudRms(buf: AudioBuffer): number {
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
+  const w = Math.max(1, Math.round(buf.sampleRate * 0.4));
+  const rms: number[] = [];
+  for (let i = 0; i < buf.length; i += w) {
+    const end = Math.min(buf.length, i + w);
+    let sum = 0;
+    for (let j = i; j < end; j++) {
+      let v = 0;
+      for (const ch of chans) v += ch[j];
+      v /= chans.length;
+      sum += v * v;
+    }
+    rms.push(Math.sqrt(sum / (end - i)));
+  }
+  if (!rms.length) return 0;
+  rms.sort((a, b) => a - b);
+  return rms[Math.min(rms.length - 1, Math.floor(rms.length * 0.9))];
+}
+
+/** Auto balance targets (after the master gain): loud parts of the song at this RMS… */
+export const AUTO_MUSIC_TARGET = 0.17;
+/** …and a don hit (loudest 50ms) at this fraction of it. */
+export const AUTO_HIT_RATIO = 0.75;
+
+/** Music volume that brings a song's loud parts to the auto target (null if silent). */
+export function autoMusicVolume(buf: AudioBuffer): number | null {
+  const r = loudRms(buf);
+  return r > 1e-4 ? AUTO_MUSIC_TARGET / (r * MASTER_GAIN) : null;
+}
+
+/** Hit volume for the auto target (hit sounds are already at the reference loudness). */
+export function autoHitVolume(): number {
+  return (AUTO_MUSIC_TARGET * AUTO_HIT_RATIO) / (HIT_REFERENCE_RMS.don * MASTER_GAIN);
+}
+
+/** Largest absolute sample of a buffer. */
+export function peakLevel(buf: AudioBuffer): number {
+  let pk = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) {
+      const v = d[i] < 0 ? -d[i] : d[i];
+      if (v > pk) pk = v;
+    }
+  }
+  return pk;
+}
+
 /** Gain that brings a hit sound to the PeepoDrumKit reference loudness. */
 function hitNormalize(buf: AudioBuffer | null, color: 'don' | 'ka'): number {
   if (!buf) return 1;
@@ -100,48 +153,48 @@ export async function mixSoundtrack(
     const hitGain = ctx.createGain();
     hitGain.gain.value = opts.hitVolume;
     hitGain.connect(master);
-    // Dan: one extra gain stage per song for its own hit volume.
-    const dan = play.dan;
-    const songGains = dan && opts.danHitVolumes
-      ? dan.sections.map((_, k) => {
-          const g = ctx.createGain();
-          g.gain.value = opts.danHitVolumes![k] ?? 1;
-          g.connect(hitGain);
-          return g;
-        })
-      : null;
     // Like OpenTaiko (one CSound per drum, PlayStart rewinds it), a new hit of
     // the same colour cuts the previous one, so dense streams don't stack up
-    // and clip. The cut is a few-ms fade to avoid a click.
-    const CUT_FADE = 0.004;
-    const last: Record<'don' | 'ka', { src: AudioBufferSourceNode; gain: GainNode; at: number } | null> = { don: null, ka: null };
-    const hits = [...play.hits].sort((a, b) => a.time - b.time);
-    for (const h of hits) {
-      const buf = h.color === 'don' ? don : ka;
-      if (!buf) continue;
-      const when = (h.time + opts.leadInMs) / 1000;
-      if (when < 0 || when * 1000 > opts.durationMs) continue;
-      const prev = last[h.color];
-      if (prev && prev.at + buf.duration > when) {
-        const from = Math.max(prev.at, when - CUT_FADE);
-        prev.gain.gain.setValueAtTime(norm[h.color], from);
-        prev.gain.gain.linearRampToValueAtTime(0, when);
-        prev.src.stop(when);
-      }
-      const dest = songGains && dan ? songGains[danSongAt(dan, h.time)] : null;
-      if (dest && dest.gain.value <= 0) {
-        // Silent song: still cuts the previous voice, plays nothing.
-        last[h.color] = null;
-        continue;
-      }
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      const voice = ctx.createGain();
-      voice.gain.value = norm[h.color];
-      src.connect(voice).connect(dest ?? hitGain);
-      src.start(when);
-      last[h.color] = { src, gain: voice, at: when };
+    // and clip. The cut is a few-ms fade to avoid a click. The hits are
+    // summed here into one buffer (one node per hit was ~3x slower to render).
+    const sr = opts.sampleRate;
+    const track = new AudioBuffer({ numberOfChannels: 2, length, sampleRate: sr });
+    const out = [track.getChannelData(0), track.getChannelData(1)];
+    const FADE = Math.max(1, Math.round(sr * 0.004));
+    const dan = play.dan;
+    const songGain = (t: number) => (dan && opts.danHitVolumes ? (opts.danHitVolumes[danSongAt(dan, t)] ?? 1) : 1);
+    const hits = [...play.hits].sort((x, y) => x.time - y.time);
+    // Start sample of the next hit of the same colour (where this one is cut).
+    const nextStart = new Array<number>(hits.length).fill(Infinity);
+    const seen: Record<'don' | 'ka', number> = { don: Infinity, ka: Infinity };
+    const startOf = (h: (typeof hits)[number]) => Math.round(((h.time + opts.leadInMs) / 1000) * sr);
+    for (let i = hits.length - 1; i >= 0; i--) {
+      nextStart[i] = seen[hits[i].color];
+      seen[hits[i].color] = startOf(hits[i]);
     }
+    hits.forEach((h, i) => {
+      const buf = h.color === 'don' ? don : ka;
+      if (!buf) return;
+      const at = startOf(h);
+      if (at < 0 || at >= length) return;
+      const g = norm[h.color] * songGain(h.time);
+      if (g <= 0) return;
+      const cut = nextStart[i];
+      const end = Math.min(at + buf.length, cut, length);
+      const fadeFrom = cut < at + buf.length ? Math.max(at, cut - FADE) : Infinity;
+      for (let ch = 0; ch < 2; ch++) {
+        const src = buf.getChannelData(Math.min(ch, buf.numberOfChannels - 1));
+        const dst = out[ch];
+        for (let t = at; t < end; t++) {
+          const f = t < fadeFrom ? 1 : (cut - t) / FADE;
+          dst[t] += src[t - at] * g * f;
+        }
+      }
+    });
+    const src = ctx.createBufferSource();
+    src.buffer = track;
+    src.connect(hitGain);
+    src.start(0);
   }
 
   const endKey: Record<EndResult, SoundKey | null> = {
